@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ネオン サバイバー - 完全究極版</title>
+    <title>ネオン サバイバー</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000000; color: #fff; font-family: 'Segoe UI', sans-serif; user-select: none; touch-action: none; }
         canvas { display: block; touch-action: none; }
@@ -481,7 +481,7 @@ function renderScoreShop() {
     container.innerHTML = '';
     
     const options = [
-        { name: "SP還元 (小)", desc: "消費済みSPを100%還元", cost: 10000, reward: Math.floor(player.spentSp * 1) },
+        { name: "SP還元 (小)", desc: "消費済みSPを50%還元", cost: 10000, reward: Math.floor(player.spentSp / 2) },
         { name: "SP還元 (大)", desc: "消費済みSPを200%還元", cost: 20000, reward: Math.floor(player.spentSp * 2) }
     ];
 
