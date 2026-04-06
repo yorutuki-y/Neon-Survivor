@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ネオン サバイバー</title>
+    <title>ネオン サバイバー - 音響追加＆鬼ボス極限強化版</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000000; color: #fff; font-family: 'Segoe UI', sans-serif; user-select: none; touch-action: none; }
         canvas { display: block; touch-action: none; }
@@ -179,42 +179,71 @@
     <canvas id="game"></canvas>
 
 <script>
-// ファビコンを自動生成して追加する関数
+// --- ファビコン自動生成 ---
 function generateFavicon() {
     const favCanvas = document.createElement('canvas');
-    favCanvas.width = 64;
-    favCanvas.height = 64;
+    favCanvas.width = 64; favCanvas.height = 64;
     const fctx = favCanvas.getContext('2d');
-    
-    // 背景を黒く塗る
-    fctx.fillStyle = '#000';
-    fctx.fillRect(0, 0, 64, 64);
-    
-    // ネオン風の文字を設定
+    fctx.fillStyle = '#000'; fctx.fillRect(0, 0, 64, 64);
     fctx.font = 'bold 48px "Segoe UI", sans-serif';
-    fctx.textAlign = 'center';
-    fctx.textBaseline = 'middle';
-    
-    // ネオンの光（グロー）効果
-    fctx.shadowColor = '#0ff';
-    fctx.shadowBlur = 15;
-    fctx.fillStyle = '#fff';
-    fctx.strokeStyle = '#0ff';
-    fctx.lineWidth = 2;
-    
-    // 「N」を描画
-    fctx.fillText('N', 32, 36);
-    fctx.strokeText('N', 32, 36);
-    
-    // Data URLに変換してHTMLのheadに追加
+    fctx.textAlign = 'center'; fctx.textBaseline = 'middle';
+    fctx.shadowColor = '#0ff'; fctx.shadowBlur = 15;
+    fctx.fillStyle = '#fff'; fctx.strokeStyle = '#0ff'; fctx.lineWidth = 2;
+    fctx.fillText('N', 32, 36); fctx.strokeText('N', 32, 36);
     const link = document.createElement('link');
-    link.rel = 'icon';
-    link.type = 'image/png';
+    link.rel = 'icon'; link.type = 'image/png';
     link.href = favCanvas.toDataURL('image/png');
     document.head.appendChild(link);
 }
-generateFavicon(); // 実行
+generateFavicon();
 
+// --- オーディオ管理（Web Audio API） ---
+const AudioContext = window.AudioContext || window.webkitAudioContext;
+const audioCtx = new AudioContext();
+
+function playTone(freq, type, duration, vol = 0.1, slideFreq = null) {
+    if(audioCtx.state === 'suspended') return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    if(slideFreq) osc.frequency.exponentialRampToValueAtTime(slideFreq, audioCtx.currentTime + duration);
+    gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(); osc.stop(audioCtx.currentTime + duration);
+}
+
+function playNoise(duration, vol = 0.1, isHeavy = false) {
+    if(audioCtx.state === 'suspended') return;
+    const bufferSize = audioCtx.sampleRate * duration;
+    const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+    const noise = audioCtx.createBufferSource();
+    noise.buffer = buffer;
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'lowpass'; filter.frequency.value = isHeavy ? 500 : 1500;
+    const gain = audioCtx.createGain();
+    gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+    noise.connect(filter); filter.connect(gain); gain.connect(audioCtx.destination);
+    noise.start();
+}
+
+const SFX = {
+    shoot: () => playTone(800, 'square', 0.1, 0.03, 300),
+    hit: () => playNoise(0.1, 0.05),
+    exp: () => { playNoise(0.3, 0.1, true); playTone(150, 'sawtooth', 0.3, 0.05, 50); },
+    bossExp: () => { playNoise(2.0, 0.5, true); playTone(100, 'sawtooth', 2.0, 0.3, 20); },
+    levelUp: () => { playTone(400, 'sine', 0.1, 0.1); setTimeout(()=>playTone(600, 'sine', 0.2, 0.1), 100); setTimeout(()=>playTone(800, 'sine', 0.4, 0.1), 200); },
+    laser: () => playTone(100, 'sawtooth', 0.8, 0.2, 50),
+    alert: () => { playTone(800, 'square', 0.2, 0.1); setTimeout(()=>playTone(800, 'square', 0.2, 0.1), 300); },
+    counter: () => playTone(1200, 'sine', 0.3, 0.1, 2000),
+    click: () => playTone(1000, 'sine', 0.05, 0.05)
+};
+
+// --- メインシステム ---
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 let w, h, player, isPlay = false, isShopOpen = false, isScoreShopOpen = false, isPaused = false, isGameOver = false, isGameClear = false, frame = 0, score = 0;
@@ -236,9 +265,7 @@ let nextMilestone = 10;
 let endlessHighScore = parseInt(localStorage.getItem('neon_highscore') || '0');
 
 const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-if (isTouchDevice) {
-    document.getElementById('mobile-controls').style.display = 'block';
-}
+if (isTouchDevice) document.getElementById('mobile-controls').style.display = 'block';
 const sizeScale = isTouchDevice ? 0.6 : 1.0; 
 
 let touchX = null, touchY = null;
@@ -270,21 +297,16 @@ function formatDamage(num) {
 
 function returnToTitle() {
     isPlay = false; isGameOver = false; isGameClear = false; isPaused = false; isShopOpen = false; isScoreShopOpen = false;
-
     document.getElementById('game-over-screen').style.display = 'none';
     document.getElementById('game-clear-screen').style.display = 'none';
     document.getElementById('pause-screen').style.display = 'none';
     document.getElementById('shop-panel').style.display = 'none';
     document.getElementById('score-shop-panel').style.display = 'none';
     document.getElementById('boss-hud-container').innerHTML = '';
-
     document.getElementById('start-menu').style.display = 'flex';
 
-    if (localStorage.getItem('neon_cleared') === 'true') {
-        document.getElementById('btn-oni').style.display = 'block';
-    } else {
-        document.getElementById('btn-oni').style.display = 'none';
-    }
+    if (localStorage.getItem('neon_cleared') === 'true') document.getElementById('btn-oni').style.display = 'block';
+    else document.getElementById('btn-oni').style.display = 'none';
     
     if (localStorage.getItem('neon_oni_cleared') === 'true') {
         document.getElementById('btn-endless').style.display = 'block';
@@ -295,17 +317,13 @@ function returnToTitle() {
         document.getElementById('btn-endless').style.display = 'none';
         document.getElementById('highscore-display').style.display = 'none';
     }
-
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, h);
 }
-
-window.onload = () => { returnToTitle(); };
+window.onload = () => returnToTitle();
 
 function resetData() {
     if (confirm("本当に進行状況とハイスコアを全てリセットしますか？")) {
-        localStorage.clear();
-        returnToTitle(); 
+        localStorage.clear(); returnToTitle(); 
     }
 }
 
@@ -334,25 +352,20 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => keys[e.code] = false);
 
+// スマホ操作系
 canvas.addEventListener('touchstart', e => {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
     if (e.target.closest('.m-btn')) return;
-
     if (!isPlay || isPaused || isShopOpen || isScoreShopOpen) return;
     e.preventDefault(); 
     for (let i = 0; i < e.changedTouches.length; i++) {
         const touch = e.changedTouches[i];
         if (touch.clientX < w / 2 && !isTouching) {
-            isTouching = true;
-            joystickCenter.x = touch.clientX;
-            joystickCenter.y = touch.clientY;
-            touchX = touch.clientX;
-            touchY = touch.clientY;
-            
+            isTouching = true; joystickCenter.x = touch.clientX; joystickCenter.y = touch.clientY;
+            touchX = touch.clientX; touchY = touch.clientY;
             const jZone = document.getElementById('joystick-zone');
-            jZone.style.left = joystickCenter.x + 'px';
-            jZone.style.top = joystickCenter.y + 'px';
-            jZone.style.display = 'block';
-            document.getElementById('joystick-stick').style.transform = `translate(-50%, -50%)`;
+            jZone.style.left = joystickCenter.x + 'px'; jZone.style.top = joystickCenter.y + 'px';
+            jZone.style.display = 'block'; document.getElementById('joystick-stick').style.transform = `translate(-50%, -50%)`;
         }
     }
 }, {passive: false});
@@ -363,15 +376,10 @@ canvas.addEventListener('touchmove', e => {
     for (let i = 0; i < e.changedTouches.length; i++) {
         const touch = e.changedTouches[i];
         if (touch.clientX < w) {
-            touchX = touch.clientX;
-            touchY = touch.clientY;
-            let dx = touchX - joystickCenter.x;
-            let dy = touchY - joystickCenter.y;
+            touchX = touch.clientX; touchY = touch.clientY;
+            let dx = touchX - joystickCenter.x; let dy = touchY - joystickCenter.y;
             let dist = Math.hypot(dx, dy);
-            if (dist > maxJoystickDist) {
-                dx = (dx / dist) * maxJoystickDist;
-                dy = (dy / dist) * maxJoystickDist;
-            }
+            if (dist > maxJoystickDist) { dx = (dx / dist) * maxJoystickDist; dy = (dy / dist) * maxJoystickDist; }
             document.getElementById('joystick-stick').style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
         }
     }
@@ -381,10 +389,7 @@ function endTouch(e) {
     if (!isPlay) return;
     e.preventDefault();
     for (let i = 0; i < e.changedTouches.length; i++) {
-        if (isTouching) {
-            isTouching = false; touchX = null; touchY = null;
-            document.getElementById('joystick-zone').style.display = 'none';
-        }
+        if (isTouching) { isTouching = false; touchX = null; touchY = null; document.getElementById('joystick-zone').style.display = 'none'; }
     }
 }
 canvas.addEventListener('touchend', endTouch, {passive: false});
@@ -393,18 +398,16 @@ canvas.addEventListener('touchcancel', endTouch, {passive: false});
 function addShake(amount) { screenShake = Math.min(screenShake + amount, 15); }
 
 function togglePause() {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    SFX.click();
     isPaused = !isPaused;
     const pauseScreen = document.getElementById('pause-screen');
-    
-    if (isPaused) {
-        pauseScreen.style.display = 'flex';
-    } else {
-        pauseScreen.style.display = 'none';
-        lastTime = performance.now();
-    }
+    if (isPaused) pauseScreen.style.display = 'flex';
+    else { pauseScreen.style.display = 'none'; lastTime = performance.now(); }
 }
 
 function toggleShop() {
+    SFX.click();
     isShopOpen = !isShopOpen;
     const panel = document.getElementById('shop-panel');
     if(isShopOpen) { renderShop(); panel.style.display = 'flex'; } 
@@ -412,6 +415,7 @@ function toggleShop() {
 }
 
 function toggleScoreShop() {
+    SFX.click();
     isScoreShopOpen = !isScoreShopOpen;
     const panel = document.getElementById('score-shop-panel');
     if(isScoreShopOpen) { renderScoreShop(); panel.style.display = 'flex'; } 
@@ -419,56 +423,32 @@ function toggleScoreShop() {
 }
 
 window.buySkill = function(key, type) {
-    const s = SKILLS[key];
-    const cost = s.cost || 1;
-    let bought = false;
-    
+    SFX.click();
+    const s = SKILLS[key]; const cost = s.cost || 1; let bought = false;
     if (type === 'max') {
         const availablePurchases = Math.floor(player.sp / cost);
         const spaceLeft = s.max - s.lvl;
         const buyAmount = Math.min(availablePurchases, spaceLeft);
-        
-        if (buyAmount > 0) {
-            player.sp -= buyAmount * cost;
-            player.spentSp += buyAmount * cost;
-            s.lvl += buyAmount;
-            bought = true;
-        }
+        if (buyAmount > 0) { player.sp -= buyAmount * cost; player.spentSp += buyAmount * cost; s.lvl += buyAmount; bought = true; }
     } else {
-        if (s.lvl < s.max && player.sp >= cost) {
-            player.sp -= cost; player.spentSp += cost; s.lvl++; bought = true;
-        }
+        if (s.lvl < s.max && player.sp >= cost) { player.sp -= cost; player.spentSp += cost; s.lvl++; bought = true; }
     }
-    if (bought) { renderShop(); updateUI(); }
+    if (bought) { SFX.levelUp(); renderShop(); updateUI(); }
 };
 
 function renderShop() {
     document.getElementById('shop-sp-display').innerText = player.sp;
-    const container = document.getElementById('shop-options');
-    container.innerHTML = '';
-    
+    const container = document.getElementById('shop-options'); container.innerHTML = '';
     Object.keys(SKILLS).forEach(key => {
-        const s = SKILLS[key];
-        const cost = s.cost || 1; 
+        const s = SKILLS[key]; const cost = s.cost || 1; 
         const card = document.createElement('div');
-        const isMax = s.lvl >= s.max;
-        const canBuy = player.sp >= cost && !isMax; 
-        
+        const isMax = s.lvl >= s.max; const canBuy = player.sp >= cost && !isMax; 
         card.className = 'shop-card';
-        if (isMax) card.classList.add('maxed');
-        else if (canBuy) card.classList.add('buyable');
-        
+        if (isMax) card.classList.add('maxed'); else if (canBuy) card.classList.add('buyable');
         let lvlDisplay = isMax ? 'MAX' : `${s.lvl}/${s.max}`;
         let costDisplay = isMax ? '' : `<br><span style="color:${canBuy ? '#ff0' : '#888'}; font-size:10px;">(必要SP: ${cost})</span>`;
-        
         let btnHtml = '';
-        if (canBuy) {
-            btnHtml = `<div style="display:flex; justify-content:center; gap:5px;">
-                <button class="buy-btn" onclick="buySkill('${key}', '1')">+1強化</button>
-                <button class="buy-btn max-btn" onclick="buySkill('${key}', 'max')">MAX</button>
-            </div>`;
-        }
-        
+        if (canBuy) btnHtml = `<div style="display:flex; justify-content:center; gap:5px;"><button class="buy-btn" onclick="buySkill('${key}', '1')">+1強化</button><button class="buy-btn max-btn" onclick="buySkill('${key}', 'max')">MAX</button></div>`;
         card.innerHTML = `<b>${s.name}</b><p>${s.desc}</p><div class="lvl-text">Lv: ${lvlDisplay}${costDisplay}</div>${btnHtml}`;
         container.appendChild(card);
     });
@@ -477,26 +457,18 @@ function renderShop() {
 function renderScoreShop() {
     document.getElementById('shop-score-display').innerText = formatDamage(score);
     document.getElementById('shop-spent-sp-display').innerText = player.spentSp;
-    const container = document.getElementById('score-shop-options');
-    container.innerHTML = '';
-    
+    const container = document.getElementById('score-shop-options'); container.innerHTML = '';
     const options = [
-        { name: "SP還元 (小)", desc: "消費済みSPを50%還元", cost: 10000, reward: Math.floor(player.spentSp / 2) },
+        { name: "SP還元 (小)", desc: "消費済みSPを100%還元", cost: 10000, reward: Math.floor(player.spentSp * 1) },
         { name: "SP還元 (大)", desc: "消費済みSPを200%還元", cost: 20000, reward: Math.floor(player.spentSp * 2) }
     ];
-
     options.forEach(opt => {
         const card = document.createElement('div');
         const canBuy = score >= opt.cost && opt.reward > 0; 
         card.className = 'shop-card';
         if (canBuy) card.classList.add('buyable');
-        
         let btnHtml = '';
-        if (canBuy) {
-            btnHtml = `<div style="display:flex; justify-content:center; gap:5px;">
-                <button class="buy-btn" onclick="score -= ${opt.cost}; player.sp += ${opt.reward}; player.totalSpGained += ${opt.reward}; renderScoreShop(); updateUI();">還元実行</button>
-            </div>`;
-        }
+        if (canBuy) btnHtml = `<div style="display:flex; justify-content:center; gap:5px;"><button class="buy-btn" onclick="SFX.levelUp(); score -= ${opt.cost}; player.sp += ${opt.reward}; player.totalSpGained += ${opt.reward}; renderScoreShop(); updateUI();">還元実行</button></div>`;
         let costDisplay = `<br><span style="color:${canBuy ? '#ff0' : '#888'}; font-size:10px;">(必要スコア: ${opt.cost})</span>`;
         card.innerHTML = `<b>${opt.name}</b><p>${opt.desc}</p><div class="lvl-text">獲得SP: +${opt.reward}${costDisplay}</div>${btnHtml}`;
         container.appendChild(card);
@@ -507,31 +479,21 @@ class Player {
     constructor() { 
         this.x = w/2; this.y = h/2; this.hp = 100; this.maxHp = 100;
         this.xp = 0; this.next = 50; this.lvl = 1; 
-        this.sp = 0; this.totalSpGained = 0; 
-        this.spentSp = 0; 
+        this.sp = 0; this.totalSpGained = 0; this.spentSp = 0; 
         this.cd = 0; this.r = 15 * sizeScale; 
         this.shieldHits = 0; this.shieldCD = 0;
     }
-
     getExpMult() { return xpMultiplier * (1 + (this.sp * SKILLS.spb.lvl * 0.1)); }
-    
-    addXp(amount) {
-        this.xp += amount * this.getExpMult();
-        checkLevel();
-    }
-
+    addXp(amount) { this.xp += amount * this.getExpMult(); checkLevel(); }
     breakShield(targetArray = bullets) {
-        this.shieldCD = 600; 
+        this.shieldCD = 600; SFX.exp();
         if (SKILLS.shd.lvl >= 10) {
             const expDmg = 800 * Math.pow(1.2, SKILLS.atk.lvl) * getScoreMult();
             effects.push({ x: this.x, y: this.y, r: 0, maxR: 400 * sizeScale, color: '#0ff' });
-            for(let i = 0; i < 16; i++) {
-                targetArray.push(new Bullet(this.x, this.y, (Math.PI*2/16)*i, expDmg, false, false));
-            }
+            for(let i = 0; i < 16; i++) targetArray.push(new Bullet(this.x, this.y, (Math.PI*2/16)*i, expDmg, false, false));
             addShake(5);
         }
     }
-
     update() {
         if (isPaused || isShopOpen || isScoreShopOpen || isGameOver || isGameClear) return; 
         const regRate = 1 + SKILLS.reg.lvl * 0.8;
@@ -542,72 +504,53 @@ class Player {
         if(keys['KeyA'] || keys['ArrowLeft']) vx--; if(keys['KeyD'] || keys['ArrowRight']) vx++;
         
         if (isTouching && touchX !== null && touchY !== null) {
-            let dx = touchX - joystickCenter.x;
-            let dy = touchY - joystickCenter.y;
+            let dx = touchX - joystickCenter.x; let dy = touchY - joystickCenter.y;
             let dist = Math.hypot(dx, dy);
             if (dist > 5) { vx = dx; vy = dy; }
         }
-
         if(vx||vy) { const d = Math.hypot(vx,vy); this.x += (vx/d)*6; this.y += (vy/d)*6; }
         
         let target = null, minDistSq = 4000000; 
         for(let e of enemies) { 
-            let dx = e.x - this.x; let dy = e.y - this.y;
-            let dSq = dx*dx + dy*dy;
+            let dx = e.x - this.x; let dy = e.y - this.y; let dSq = dx*dx + dy*dy;
             if(dSq < minDistSq) { minDistSq = dSq; target = e; } 
         }
         
-        if(this.cd > 0) this.cd--; 
-        else if(target) this.shoot(target);
-        
+        if(this.cd > 0) this.cd--; else if(target) this.shoot(target);
         updateUI();
     }
-    
     shoot(t) {
         const baseAng = Math.atan2(t.y-this.y, t.x-this.x);
         const dmg = 160 * Math.pow(1.2, SKILLS.atk.lvl) * getScoreMult();
-        let count = 1;
-        if (SKILLS.neo.lvl > 0) count = 1 + (SKILLS.neo.lvl * 2); 
+        let count = 1; if (SKILLS.neo.lvl > 0) count = 1 + (SKILLS.neo.lvl * 2); 
         const spread = count > 9 ? 0.12 : 0.20; 
         for (let i = 0; i < count; i++) {
             const angOffset = count === 1 ? 0 : (i - (count - 1) / 2) * spread;
             bullets.push(new Bullet(this.x, this.y, baseAng + angOffset, dmg, false, false));
         }
+        SFX.shoot();
         this.cd = Math.max(2, 18 - (SKILLS.rap.lvl * 1.5));
     }
-    
     draw() {
         ctx.save(); 
         ctx.shadowBlur = 15; ctx.shadowColor = '#0ff'; ctx.strokeStyle = '#0ff'; ctx.fillStyle = '#fff'; 
-        ctx.beginPath(); ctx.arc(this.x, this.y, this.r, 0, Math.PI*2); ctx.fill();
-        ctx.lineWidth = 3; ctx.stroke();
+        ctx.beginPath(); ctx.arc(this.x, this.y, this.r, 0, Math.PI*2); ctx.fill(); ctx.lineWidth = 3; ctx.stroke();
         
         if (SKILLS.shd.lvl > 0) {
-            const shdRadius = 60 * sizeScale; 
-            const maxHits = SKILLS.shd.lvl;
-            
-            if (this.shieldCD > 0) {
-                this.shieldCD--;
-                if (this.shieldCD === 0) this.shieldHits = 0;
-            } else {
+            const shdRadius = 60 * sizeScale; const maxHits = SKILLS.shd.lvl;
+            if (this.shieldCD > 0) { this.shieldCD--; if (this.shieldCD === 0) this.shieldHits = 0; } 
+            else {
                 ctx.fillStyle = 'rgba(0, 255, 255, 0.15)'; ctx.strokeStyle = '#0ff'; ctx.lineWidth = 2;
                 ctx.beginPath(); ctx.arc(this.x, this.y, shdRadius, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-                
                 const shdRadiusSq = shdRadius * shdRadius;
                 for(let e of enemies) {
                     if (e.isLaserCannon) continue;
-
-                    let dx = e.x - this.x; let dy = e.y - this.y;
-                    let rr = e.r + shdRadius;
+                    let dx = e.x - this.x; let dy = e.y - this.y; let rr = e.r + shdRadius;
                     if((dx*dx + dy*dy) < rr*rr) { 
                         e.hp -= 15 * Math.pow(1.2, SKILLS.atk.lvl) * getScoreMult(); 
-                        const pushAngle = Math.atan2(dy, dx);
-                        e.x += Math.cos(pushAngle) * 8; e.y += Math.sin(pushAngle) * 8;
+                        const pushAngle = Math.atan2(dy, dx); e.x += Math.cos(pushAngle) * 8; e.y += Math.sin(pushAngle) * 8;
                         if(e.hp <= 0 && !e.dead) e.die(bullets);
-                        if(frame % 15 === 0) {
-                            this.shieldHits++;
-                            if (this.shieldHits >= maxHits) { this.breakShield(bullets); break; }
-                        }
+                        if(frame % 15 === 0) { SFX.hit(); this.shieldHits++; if (this.shieldHits >= maxHits) { this.breakShield(bullets); break; } }
                     }
                 }
             }
@@ -620,42 +563,29 @@ class Bullet {
     constructor(x, y, ang, dmg, isEnemyBullet = false, isHoming = false, isOniBullet = false) {
         this.x = x; this.y = y; this.dmg = dmg; 
         this.isEnemyBullet = isEnemyBullet; this.isHoming = isHoming; this.dead = false;
-        
-        this.isOniBullet = isOniBullet;
-        this.isReflected = false; 
-        
+        this.isOniBullet = isOniBullet; this.isReflected = false; 
         const spd = isHoming ? 6.5 : (isEnemyBullet ? 8 + globalEnemyBuffs.speedUp : 32); 
         this.vx = Math.cos(ang) * spd; this.vy = Math.sin(ang) * spd;
-        
         this.life = isHoming ? 600 : (isOniBullet ? 400 : (isEnemyBullet ? 150 : 120));
         this.maxLife = this.life;
         this.r = (isHoming ? 20 : (isEnemyBullet ? 14 : 8)) * sizeScale; 
         this.pierce = (!isEnemyBullet && SKILLS.thr.lvl > 0) ? SKILLS.thr.lvl : 0;
         this.hitTargets = new Set();
     }
-    
     update(nextB) {
         if (this.isHoming) {
             const angleToPlayer = Math.atan2(player.y - this.y, player.x - this.x);
-            const speed = 6.5; 
             const currentAngle = Math.atan2(this.vy, this.vx);
             let diff = angleToPlayer - currentAngle;
-            
-            while (diff < -Math.PI) diff += Math.PI * 2;
-            while (diff > Math.PI) diff -= Math.PI * 2;
-            
-            const turnRate = 0.045; 
-            const newAngle = currentAngle + Math.sign(diff) * Math.min(Math.abs(diff), turnRate);
-            
-            this.vx = Math.cos(newAngle) * speed;
-            this.vy = Math.sin(newAngle) * speed;
-
+            while (diff < -Math.PI) diff += Math.PI * 2; while (diff > Math.PI) diff -= Math.PI * 2;
+            const newAngle = currentAngle + Math.sign(diff) * Math.min(Math.abs(diff), 0.045);
+            this.vx = Math.cos(newAngle) * 6.5; this.vy = Math.sin(newAngle) * 6.5;
             if (this.maxLife - this.life > 30) {
                 for (let e of enemies) {
                     if (e.isOniBoss) {
                         let dx = e.x - this.x; let dy = e.y - this.y; let rr = e.r + this.r;
                         if (dx*dx + dy*dy < rr*rr) { 
-                            player.sp += 5; player.totalSpGained += 5; this.dead = true;
+                            SFX.levelUp(); player.sp += 5; player.totalSpGained += 5; this.dead = true;
                             texts.push(new FloatingText(this.x, this.y, "SP +5", '#0ff', 24));
                             effects.push({ x: this.x, y: this.y, r: 0, maxR: 80 * sizeScale, color: '#a0f' });
                             updateUI(); return; 
@@ -671,11 +601,9 @@ class Bullet {
         if (this.isEnemyBullet) {
             let pdx = player.x - this.x; let pdy = player.y - this.y;
             if (SKILLS.shd.lvl > 0 && player.shieldCD === 0) {
-                const shdRadius = 60 * sizeScale; 
-                const maxHits = SKILLS.shd.lvl; 
-                let rr = shdRadius + this.r;
+                const shdRadius = 60 * sizeScale; const maxHits = SKILLS.shd.lvl; let rr = shdRadius + this.r;
                 if (pdx*pdx + pdy*pdy < rr*rr) { 
-                    this.dead = true; player.shieldHits++;
+                    SFX.hit(); this.dead = true; player.shieldHits++;
                     effects.push({ x: this.x, y: this.y, r: 0, maxR: 20 * sizeScale, color: '#0ff' });
                     if (player.shieldHits >= maxHits) player.breakShield(nextB);
                     return;
@@ -683,7 +611,7 @@ class Bullet {
             }
             let prr = player.r + this.r;
             if (pdx*pdx + pdy*pdy < prr*prr) { 
-                player.hp -= this.dmg; this.dead = true; addShake(this.isHoming ? 8 : 4);
+                SFX.hit(); player.hp -= this.dmg; this.dead = true; addShake(this.isHoming ? 8 : 4);
                 if(player.hp <= 0) showGameOverScreen();
             }
             return;
@@ -695,7 +623,7 @@ class Bullet {
                 let dx = e.x - this.x; let dy = e.y - this.y; let rr = e.r + this.r;
                 if(dx*dx + dy*dy < rr*rr) {
                     if (!e.isLaserCannon) {
-                        e.hp -= this.dmg; 
+                        SFX.hit(); e.hp -= this.dmg; 
                         if(texts.length < 20) texts.push(new FloatingText(e.x, e.y, formatDamage(this.dmg), e.isOniBoss ? '#faa' : '#fff'));
                     } else {
                         if(texts.length < 10) texts.push(new FloatingText(e.x, e.y, "INVINCIBLE", '#888', 12));
@@ -703,17 +631,15 @@ class Bullet {
                     this.hitTargets.add(e);
                     
                     if (this.isReflected) {
-                        player.sp += 5; player.totalSpGained += 5; 
+                        SFX.counter(); player.sp += 5; player.totalSpGained += 5; 
                         if(texts.length < 40) texts.push(new FloatingText(e.x, e.y - 20 * sizeScale, "SP +5", '#0f0', 18));
                         if (e.isOniBoss) {
-                            let counterDmg = e.maxHp * 0.05; 
-                            e.hp -= counterDmg;
+                            let counterDmg = e.maxHp * 0.05; e.hp -= counterDmg;
                             texts.push(new FloatingText(e.x, e.y, "COUNTER!", '#ff0', 24));
                             effects.push({ x: e.x, y: e.y, r: 0, maxR: 150 * sizeScale, color: '#ff0' });
                         }
                         updateUI();
                     }
-
                     if(e.hp <= 0 && !e.dead) e.die(nextB); 
                     if(this.pierce > 0) this.pierce--; else { this.dead = true; break; }
                 }
@@ -726,7 +652,7 @@ class Bullet {
                     if (Math.abs(b.x - this.x) < b.r + this.r && Math.abs(b.y - this.y) < b.r + this.r) {
                         let dx = b.x - this.x; let dy = b.y - this.y; let rr = b.r + this.r;
                         if(dx*dx + dy*dy < rr*rr) {
-                            b.isEnemyBullet = false; b.isHoming = false; b.isReflected = true; 
+                            SFX.counter(); b.isEnemyBullet = false; b.isHoming = false; b.isReflected = true; 
                             b.vx = -b.vx * 1.5; b.vy = -b.vy * 1.5; b.dmg = this.dmg * 2; 
                             effects.push({ x: b.x, y: b.y, r: 0, maxR: 30 * sizeScale, color: '#0f0' });
                             if(this.pierce > 0) this.pierce--; else { this.dead = true; break; }
@@ -736,29 +662,24 @@ class Bullet {
             }
         }
     }
-    
     draw() { 
         ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(this.x, this.y, this.r, 0, Math.PI*2); 
         let color = this.isEnemyBullet ? '#f80' : (this.isReflected ? '#0f0' : '#0ff');
-        if (this.isHoming) {
-            ctx.strokeStyle = '#a0f'; ctx.stroke();
-            ctx.beginPath(); ctx.arc(this.x, this.y, this.r*0.5, 0, Math.PI*2);
-            ctx.strokeStyle = '#fff'; ctx.stroke();
-        } else { ctx.strokeStyle = color; ctx.stroke(); }
+        if (this.isHoming) { ctx.strokeStyle = '#a0f'; ctx.stroke(); ctx.beginPath(); ctx.arc(this.x, this.y, this.r*0.5, 0, Math.PI*2); ctx.strokeStyle = '#fff'; ctx.stroke(); } 
+        else { ctx.strokeStyle = color; ctx.stroke(); }
     }
 }
 
 class Laser {
     constructor(x, y, angle) {
         this.x = x; this.y = y; this.angle = angle;
-        this.width = 180 * sizeScale; 
-        this.length = 2000; this.phase = 0;
+        this.width = 180 * sizeScale; this.length = 2000; this.phase = 0;
         this.timer = 20; this.dead = false; this.hasHit = false;
     }
     update() {
         this.timer--;
         if (this.phase === 0 && this.timer <= 0) {
-            this.phase = 1; this.timer = 15; addShake(25);
+            this.phase = 1; this.timer = 15; addShake(25); SFX.laser();
         } else if (this.phase === 1) {
             if (!this.hasHit) {
                 let dx = Math.cos(this.angle); let dy = Math.sin(this.angle);
@@ -766,7 +687,7 @@ class Laser {
                 if (t > 0) {
                     let cx = this.x + dx * t; let cy = this.y + dy * t;
                     if ((player.x - cx)**2 + (player.y - cy)**2 < (this.width/2 + player.r)**2) {
-                        this.hasHit = true;
+                        this.hasHit = true; SFX.exp();
                         if (SKILLS.shd.lvl > 0 && player.shieldCD === 0) {
                             player.shieldHits++;
                             effects.push({ x: player.x, y: player.y, r: 0, maxR: 60 * sizeScale, color: '#0ff' });
@@ -774,8 +695,7 @@ class Laser {
                             if (player.shieldHits >= SKILLS.shd.lvl) player.breakShield(bullets);
                             updateUI();
                         } else {
-                            player.maxHp = Math.max(10, player.maxHp - 10);
-                            player.hp = Math.min(player.hp, player.maxHp);
+                            player.maxHp = Math.max(10, player.maxHp - 10); player.hp = Math.min(player.hp, player.maxHp);
                             player.sp = 0; 
                             texts.push(new FloatingText(player.x, player.y - 30 * sizeScale, "SP LOST!", '#f00', 30));
                             effects.push({ x: player.x, y: player.y, r: 0, maxR: 100 * sizeScale, color: '#f00' });
@@ -786,22 +706,13 @@ class Laser {
                 }
             }
             if (this.timer <= 0) { this.phase = 2; this.timer = 20; }
-        } else if (this.phase === 2 && this.timer <= 0) {
-            this.dead = true;
-        }
+        } else if (this.phase === 2 && this.timer <= 0) { this.dead = true; }
     }
     draw() {
         ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.angle);
-        if (this.phase === 0) {
-            ctx.fillStyle = `rgba(255, 0, 0, ${0.3 + 0.7 * Math.abs(Math.sin(this.timer * 0.3))})`;
-            ctx.fillRect(0, -1, this.length, 2);
-        } else if (this.phase === 1) {
-            ctx.fillStyle = '#f00'; ctx.fillRect(0, -this.width/2, this.length, this.width);
-            ctx.fillStyle = '#fff'; ctx.fillRect(0, -this.width/4, this.length, this.width/2);
-        } else if (this.phase === 2) {
-            ctx.fillStyle = `rgba(255, 0, 0, ${this.timer / 20})`;
-            ctx.fillRect(0, -this.width/2, this.length, this.width);
-        }
+        if (this.phase === 0) { ctx.fillStyle = `rgba(255, 0, 0, ${0.3 + 0.7 * Math.abs(Math.sin(this.timer * 0.3))})`; ctx.fillRect(0, -1, this.length, 2); } 
+        else if (this.phase === 1) { ctx.fillStyle = '#f00'; ctx.fillRect(0, -this.width/2, this.length, this.width); ctx.fillStyle = '#fff'; ctx.fillRect(0, -this.width/4, this.length, this.width/2); } 
+        else if (this.phase === 2) { ctx.fillStyle = `rgba(255, 0, 0, ${this.timer / 20})`; ctx.fillRect(0, -this.width/2, this.length, this.width); }
         ctx.restore();
     }
 }
@@ -812,37 +723,27 @@ class Enemy {
         this.isOniMinion = false; this.isLaserCannon = isLaserCannon;
         this.orbitAngle = 0; this.bossRef = null;
         
-        if (spawnX !== null && spawnY !== null) {
-            this.x = spawnX; this.y = spawnY;
-        } else {
-            const a = Math.random()*Math.PI*2;
-            const dist = isSwarm ? Math.max(w,h)*0.8 + Math.random()*400 : Math.max(w,h)*0.6;
+        if (spawnX !== null && spawnY !== null) { this.x = spawnX; this.y = spawnY; } 
+        else {
+            const a = Math.random()*Math.PI*2; const dist = isSwarm ? Math.max(w,h)*0.8 + Math.random()*400 : Math.max(w,h)*0.6;
             this.x = player.x + Math.cos(a)*dist; this.y = player.y + Math.sin(a)*dist;
         }
 
         if (this.isOniBoss) {
-            this.hp = 500000000; 
-            this.maxHp = this.hp;
-            this.r = 120 * sizeScale; 
+            this.hp = 500000000; this.maxHp = this.hp; this.r = 120 * sizeScale; 
             this.cd = 0; this.phase = 1; this.attackTimer = 0;
         } else if (this.isLaserCannon) {
             this.hp = 99999999; this.maxHp = this.hp; this.r = 30 * sizeScale; this.laserTimer = 160; 
         } else {
-            const mult = Math.pow(10, SKILLS.gre.lvl);
-            const scaleLevel = isBoss ? nextMilestone : player.lvl;
+            const mult = Math.pow(10, SKILLS.gre.lvl); const scaleLevel = isBoss ? nextMilestone : player.lvl;
             const baseHp = this.isBoss ? 100000 + scaleLevel*12000 : (this.isElite ? 2500 + player.lvl*300 : (this.isSwarm ? 30 : 100 + player.lvl*50));
             this.hp = baseHp * mult; this.maxHp = this.hp; 
             this.r = (this.isBoss ? 80 : (this.isElite ? 45 : (this.isSwarm ? 32 : 22))) * sizeScale; 
             this.eSkills = { neo: 0, rap: 0, bom: 0 }; this.cd = Math.floor(Math.random() * 60);
 
             if (!this.isSwarm) {
-                if (player.lvl >= 40) {
-                    let choices = ['neo', 'rap', 'bom'].sort(() => 0.5 - Math.random());
-                    this.eSkills[choices[0]] = 3; this.eSkills[choices[1]] = 3;
-                } else if (player.lvl >= 20) {
-                    let choices = ['neo', 'rap', 'bom'];
-                    this.eSkills[choices[Math.floor(Math.random() * choices.length)]] = 1;
-                }
+                if (player.lvl >= 40) { let choices = ['neo', 'rap', 'bom'].sort(() => 0.5 - Math.random()); this.eSkills[choices[0]] = 3; this.eSkills[choices[1]] = 3; } 
+                else if (player.lvl >= 20) { let choices = ['neo', 'rap', 'bom']; this.eSkills[choices[Math.floor(Math.random() * choices.length)]] = 1; }
             }
         }
         this.dead = false;
@@ -872,18 +773,19 @@ class Enemy {
             this.hp = Math.min(this.maxHp, this.hp + (this.phase > 1 ? 500000 : 20000));
 
             if (this.hp <= this.maxHp * 0.6 && this.phase === 1) {
-                this.phase = 2; addShake(20);
+                this.phase = 2; addShake(20); SFX.alert();
                 let warningText = document.getElementById('warning');
                 warningText.innerText = "PHASE 2: ALL RANGE ATTACK!!"; warningText.style.color = "#f0f"; warningText.style.display = 'block'; 
                 setTimeout(() => warningText.style.display = 'none', 3000);
                 
-                for (let i = 0; i < 6; i++) {
-                    let angle = (Math.PI * 2 / 6) * i;
+                // 【絶望強化】レーザー砲を8基（八方向）に召喚！
+                for (let i = 0; i < 8; i++) {
+                    let angle = (Math.PI * 2 / 8) * i;
                     let cannon = new Enemy(false, false, false, this.x, this.y, false, true);
                     cannon.bossRef = this; cannon.orbitAngle = angle; enemies.push(cannon);
                 }
             } else if (this.hp <= this.maxHp * 0.3 && this.phase === 2) {
-                this.phase = 3; addShake(30);
+                this.phase = 3; addShake(30); SFX.alert();
                 let warningText = document.getElementById('warning');
                 warningText.innerText = "FINAL PHASE: OVERDRIVE!!"; warningText.style.color = "#f00"; warningText.style.display = 'block'; 
                 setTimeout(() => warningText.style.display = 'none', 3000);
@@ -893,7 +795,6 @@ class Enemy {
 
             if (this.phase === 1) {
                 this.x += (dx/dist) * 3.5; this.y += (dy/dist) * 3.5; 
-                
                 if (this.attackTimer % 3 === 0) {
                     let angle = (this.attackTimer * 0.15) % (Math.PI * 2);
                     bullets.push(new Bullet(this.x, this.y, angle, 20, true, false, true));
@@ -925,8 +826,7 @@ class Enemy {
                 }
             }
             else if (this.phase === 3) {
-                let cx = w / 2; let cy = h / 2;
-                let cdx = cx - this.x; let cdy = cy - this.y; let cDist = Math.hypot(cdx, cdy);
+                let cx = w / 2; let cy = h / 2; let cdx = cx - this.x; let cdy = cy - this.y; let cDist = Math.hypot(cdx, cdy);
                 if (cDist > 10) { this.x += (cdx/cDist) * 6; this.y += (cdy/cDist) * 6; }
 
                 if (this.attackTimer % 8 === 0) {
@@ -942,10 +842,7 @@ class Enemy {
                 }
             }
 
-            if(dist < this.r + player.r) { 
-                player.hp -= 1000; addShake(15); 
-                if(player.hp <= 0) showGameOverScreen(); 
-            }
+            if(dist < this.r + player.r) { SFX.exp(); player.hp -= 1000; addShake(15); if(player.hp <= 0) showGameOverScreen(); }
             return;
         }
 
@@ -954,7 +851,7 @@ class Enemy {
         this.x += (dx/dist)*spd; this.y += (dy/dist)*spd;
         
         if(dist < this.r + player.r) { 
-            player.hp -= (this.isBoss ? 5 : (this.isElite ? 4 : 2)); addShake(3);
+            SFX.hit(); player.hp -= (this.isBoss ? 5 : (this.isElite ? 4 : 2)); addShake(3);
             if (this.eSkills.bom > 0) { this.hp = 0; this.die(bullets); }
             if(player.hp <= 0) showGameOverScreen(); 
         }
@@ -977,9 +874,10 @@ class Enemy {
     
     die(nextB) {
         if(this.dead) return; this.dead = true;
+        SFX.exp();
 
         if (this.isOniBoss) {
-            score += 10000000; bossesDefeated++;
+            SFX.bossExp(); score += 10000000; bossesDefeated++;
             effects.push({ x:this.x, y:this.y, r:0, maxR:1000 * sizeScale, color:'#f04' });
             addShake(30); setTimeout(() => showGameClearScreen(true), 1500); 
             return;
@@ -1004,13 +902,12 @@ class Enemy {
                 if (bossesDefeated === 1) globalEnemyBuffs.shoot = true;
                 else if (bossesDefeated === 2) globalEnemyBuffs.deathBomb = true;
                 else globalEnemyBuffs.speedUp++; 
-                
                 const remainingBosses = enemies.filter(e => e.isBoss && !e.dead && e !== this);
                 if(remainingBosses.length === 0) document.getElementById('warning').style.display='none'; 
             }
 
             if(this.isElite) {
-                eliteKills++; xpMultiplier = 1 + (eliteKills * 0.5);
+                eliteKills++; xpMultiplier = 1 + (eliteKills * 0.5); SFX.alert();
                 let wText = document.getElementById('warning');
                 wText.innerText = "XP BOOST x" + player.getExpMult().toFixed(1) + "!!";
                 wText.style.color = "#ff0"; wText.style.display = 'block';
@@ -1041,7 +938,6 @@ class Enemy {
             const isCrowded = drops.length > 80;
             const baseCount = this.isBoss ? 50 : (this.isElite ? 30 : 5);
             const count = Math.ceil(baseCount * (1 + SKILLS.gre.lvl * 3.5) / (isCrowded ? 4 : 1));
-            
             for(let i=0; i<count; i++) {
                 const isLarge = isCrowded || Math.random() < 0.05 || this.isElite;
                 if(drops.length < 150) drops.push(new Drop(this.x+(Math.random()-0.5)*60, this.y+(Math.random()-0.5)*60, isLarge));
@@ -1086,14 +982,12 @@ class Drop {
             player.xp += (this.isLarge ? 20 : 4) * player.getExpMult();
             checkLevel(); 
         } else {
-            const d = Math.sqrt(dSq);
-            this.x += (dx/d) * pullSpeed; this.y += (dy/d) * pullSpeed;
+            const d = Math.sqrt(dSq); this.x += (dx/d) * pullSpeed; this.y += (dy/d) * pullSpeed;
         }
     }
     draw() {
         ctx.fillStyle = this.isLarge ? '#fff' : '#0f0'; ctx.beginPath(); 
-        ctx.arc(this.x, this.y, this.isLarge ? 8 * sizeScale : 4 * sizeScale, 0, Math.PI*2); 
-        ctx.fill();
+        ctx.arc(this.x, this.y, this.isLarge ? 8 * sizeScale : 4 * sizeScale, 0, Math.PI*2); ctx.fill();
         if(this.isLarge) { ctx.strokeStyle = '#0ff'; ctx.lineWidth = 1; ctx.stroke(); }
     }
 }
@@ -1105,17 +999,11 @@ class FloatingText {
 }
 
 function showGameOverScreen() {
-    isGameOver = true;
-    let finalScoreVal = Math.floor(score);
-    
+    isGameOver = true; let finalScoreVal = Math.floor(score);
     if (gameMode === 'endless' && finalScoreVal > endlessHighScore) {
-        endlessHighScore = finalScoreVal;
-        localStorage.setItem('neon_highscore', endlessHighScore);
+        endlessHighScore = finalScoreVal; localStorage.setItem('neon_highscore', endlessHighScore);
         document.getElementById('final-score').innerText = formatDamage(finalScoreVal) + " (NEW RECORD!)";
-    } else {
-        document.getElementById('final-score').innerText = formatDamage(finalScoreVal);
-    }
-    
+    } else document.getElementById('final-score').innerText = formatDamage(finalScoreVal);
     document.getElementById('final-sp').innerText = player.totalSpGained;
     document.getElementById('final-level').innerText = player.lvl;
     document.getElementById('game-over-screen').style.display = 'flex';
@@ -1126,14 +1014,12 @@ function showGameClearScreen(isTrueClear = false) {
     if (isTrueClear) {
         localStorage.setItem('neon_oni_cleared', 'true'); 
         document.getElementById('clear-title').innerText = "TRUE MISSION ACCOMPLISHED";
-        document.getElementById('clear-title').style.color = "#f04";
-        document.getElementById('clear-title').style.textShadow = "0 0 30px #f04";
+        document.getElementById('clear-title').style.color = "#f04"; document.getElementById('clear-title').style.textShadow = "0 0 30px #f04";
         document.getElementById('clear-desc').innerText = "最凶の鬼ボスを撃破した！\nエンドレスモード解放！";
     } else {
         localStorage.setItem('neon_cleared', 'true'); 
         document.getElementById('clear-title').innerText = "MISSION ACCOMPLISHED";
-        document.getElementById('clear-title').style.color = "#0f0";
-        document.getElementById('clear-title').style.textShadow = "0 0 30px #0f0";
+        document.getElementById('clear-title').style.color = "#0f0"; document.getElementById('clear-title').style.textShadow = "0 0 30px #0f0";
         document.getElementById('clear-desc').innerText = "最大レベル(Lv99)到達！\n鬼ボス降臨モード解放！";
     }
     document.getElementById('clear-score').innerText = formatDamage(score);
@@ -1145,23 +1031,20 @@ function updateUI() {
     document.getElementById('hp-bar').style.width = Math.max(0, Math.min(100, (player.hp / player.maxHp * 100))) + '%';
     document.getElementById('xp-bar').style.width = Math.min(100, (player.xp/player.next*100))+'%';
     document.getElementById('lvl').innerText = player.lvl;
-    
     let totalXpMult = player.getExpMult(); 
     document.getElementById('xp-mult').innerText = totalXpMult > 1 ? '(x' + totalXpMult.toFixed(1) + ')' : '';
     document.getElementById('score-count').innerText = formatDamage(score);
     document.getElementById('sp-count').innerText = player.sp;
     
-    const spContainer = document.getElementById('sp-container');
-    const notice = document.getElementById('skill-up-notice');
+    const spContainer = document.getElementById('sp-container'); const notice = document.getElementById('skill-up-notice');
     if (player.sp > 0) { spContainer.classList.add('has-sp'); notice.style.display = 'block'; } 
     else { spContainer.classList.remove('has-sp'); notice.style.display = 'none'; }
     
     const activeBosses = enemies.filter(e => e.isBoss || e.isOniBoss);
     const bossContainer = document.getElementById('boss-hud-container');
 
-    if (activeBosses.length === 0) {
-        bossContainer.innerHTML = '';
-    } else {
+    if (activeBosses.length === 0) bossContainer.innerHTML = '';
+    else {
         const currentBars = bossContainer.querySelectorAll('.boss-hp-bg').length;
         if (currentBars !== activeBosses.length) {
             let html = `<div class="label" style="color:#f00; font-size:10px;">${isOniMode ? 'ONI ANOMALY DETECTED' : 'ANOMALY DETECTED'}</div>`;
@@ -1171,27 +1054,22 @@ function updateUI() {
             });
             bossContainer.innerHTML = html;
         }
-        
-        activeBosses.forEach((boss, i) => {
-            const bar = document.getElementById(`boss-hp-${i}`);
-            if (bar) bar.style.width = (boss.hp / boss.maxHp * 100) + '%';
-        });
+        activeBosses.forEach((boss, i) => { const bar = document.getElementById(`boss-hp-${i}`); if (bar) bar.style.width = (boss.hp / boss.maxHp * 100) + '%'; });
     }
 }
 
 function checkLevel() {
     while (player.xp >= player.next) {
-        player.lvl++; player.sp++; player.totalSpGained++; 
+        player.lvl++; player.sp++; player.totalSpGained++; SFX.levelUp();
         player.xp -= player.next; player.next = Math.floor(player.next * 1.15) + 15; 
-        
-        if (gameMode === 'normal' && player.lvl >= 99 && !isGameClear) {
-            updateUI(); showGameClearScreen(false); return;
-        }
+        if (gameMode === 'normal' && player.lvl >= 99 && !isGameClear) { updateUI(); showGameClearScreen(false); return; }
     }
     updateUI();
 }
 
 function startGame(mode) { 
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    SFX.click();
     document.getElementById('start-menu').style.display='none'; 
     document.getElementById('game-over-screen').style.display='none';
     document.getElementById('game-clear-screen').style.display='none';
@@ -1201,7 +1079,6 @@ function startGame(mode) {
     isPlay = true; isGameOver = false; isGameClear = false; score = 0; 
     
     Object.keys(SKILLS).forEach(k => SKILLS[k].lvl = 0);
-    
     bossesDefeated = 0; eliteKills = 0; xpMultiplier = 1;
     globalEnemyBuffs = { shoot: false, deathBomb: false, speedUp: 0 };
     nextMilestone = 10; 
@@ -1209,13 +1086,12 @@ function startGame(mode) {
     
     if (isOniMode) {
         let wText = document.getElementById('warning');
-        wText.innerText = "ONI ANOMALY INCOMING"; wText.style.color = "#f04"; wText.style.display = 'block'; addShake(15);
+        wText.innerText = "ONI ANOMALY INCOMING"; wText.style.color = "#f04"; wText.style.display = 'block'; addShake(15); SFX.alert();
         setTimeout(() => wText.style.display = 'none', 4000);
         enemies.push(new Enemy(true, false, false, null, null, true)); 
     }
 
-    lastTime = performance.now(); 
-    requestAnimationFrame(loop); 
+    lastTime = performance.now(); requestAnimationFrame(loop); 
 }
 
 function loop(timestamp) {
@@ -1233,11 +1109,10 @@ function loop(timestamp) {
     
     let shakeX = 0; let shakeY = 0;
     if (screenShake > 0.5) { shakeX = (Math.random() - 0.5) * screenShake; shakeY = (Math.random() - 0.5) * screenShake; screenShake *= 0.85; } 
-    else { screenShake = 0; }
+    else screenShake = 0; 
     ctx.translate(w/2 - player.x + shakeX, h/2 - player.y + shakeY);
     
     const hasBoss = enemies.some(e => e.isBoss || e.isOniBoss);
-    
     ctx.strokeStyle = hasBoss ? (isOniMode ? '#400' : '#400') : '#111'; ctx.lineWidth = 2;
     const gSize = 100 * sizeScale; ctx.beginPath(); 
     for(let x=Math.floor((player.x-w)/gSize)*gSize; x<player.x+w; x+=gSize) { ctx.moveTo(x,player.y-h); ctx.lineTo(x,player.y+h); }
@@ -1251,42 +1126,30 @@ function loop(timestamp) {
         if(frame > 0 && frame % 1200 === 0) enemies.push(new Enemy(false, false, true));
     }
     
-    ctx.globalCompositeOperation = 'lighter'; 
-    player.update(); player.draw();
+    ctx.globalCompositeOperation = 'lighter'; player.update(); player.draw();
     
     if (!isOniMode && player.lvl >= nextMilestone && !hasBoss) {
         let warningText = document.getElementById('warning');
         if (nextMilestone % 20 === 0) {
             for(let i = 0; i < 300; i++) enemies.push(new Enemy(false, true, false)); 
-            warningText.innerText = "MASSIVE SWARM DETECTED"; warningText.style.color = "#ff0"; warningText.style.display = 'block'; addShake(10);
-            setTimeout(() => { 
-                if(!enemies.some(e => e.isBoss && !e.dead)) warningText.style.display = 'none'; 
-                warningText.innerText = "BOSS WARNING"; warningText.style.color = "#f04"; 
-            }, 4000);
+            warningText.innerText = "MASSIVE SWARM DETECTED"; warningText.style.color = "#ff0"; warningText.style.display = 'block'; addShake(10); SFX.alert();
+            setTimeout(() => { if(!enemies.some(e => e.isBoss && !e.dead)) warningText.style.display = 'none'; warningText.innerText = "BOSS WARNING"; warningText.style.color = "#f04"; }, 4000);
         } else {
             const bossCount = Math.floor(nextMilestone / 20) + 1; 
             for(let i = 0; i < bossCount; i++) enemies.push(new Enemy(true, false, false));
-            warningText.style.display = 'block'; addShake(10);
+            warningText.style.display = 'block'; addShake(10); SFX.alert();
         }
         nextMilestone += 10; 
     }
 
-    lasers.forEach(l => l.update());
-    lasers = lasers.filter(l => !l.dead);
+    lasers.forEach(l => l.update()); lasers = lasers.filter(l => !l.dead);
 
     let newBullets = [];
-    for (let i = 0; i < bullets.length; i++) {
-        let b = bullets[i]; b.update(newBullets); b.draw();
-        if (!b.dead) newBullets.push(b);
-    }
-    bullets = newBullets;
-    if(bullets.length > 700) bullets.splice(0, bullets.length - 700);
+    for (let i = 0; i < bullets.length; i++) { let b = bullets[i]; b.update(newBullets); b.draw(); if (!b.dead) newBullets.push(b); }
+    bullets = newBullets; if(bullets.length > 700) bullets.splice(0, bullets.length - 700);
 
     let newEnemies = [];
-    for (let i = 0; i < enemies.length; i++) {
-        let e = enemies[i]; e.update(); e.draw();
-        if (!e.dead) newEnemies.push(e);
-    }
+    for (let i = 0; i < enemies.length; i++) { let e = enemies[i]; e.update(); e.draw(); if (!e.dead) newEnemies.push(e); }
     enemies = newEnemies;
 
     drops = drops.filter(d => { d.update(); d.draw(); return !d.dead; });
@@ -1298,7 +1161,6 @@ function loop(timestamp) {
     });
     
     lasers.forEach(l => l.draw());
-
     ctx.globalCompositeOperation = 'source-over'; ctx.restore(); 
 }
 </script>
