@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ネオン サバイバー - 開発者モード搭載版</title>
+    <title>ネオン サバイバー - 完全究極版（開発者モード搭載）</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000000; color: #fff; font-family: 'Segoe UI', sans-serif; user-select: none; touch-action: none; }
         canvas { display: block; touch-action: none; }
@@ -84,7 +84,7 @@
         .m-btn:active { background: rgba(0,255,255,0.3); }
         .m-btn.score-btn:active { background: rgba(255,0,255,0.3); }
 
-        /* 開発者モードUIのスタイル */
+        /* 開発者モードUI */
         #dev-panel { display: none; position: absolute; bottom: 100px; right: 20px; background: rgba(0, 0, 0, 0.9); border: 2px solid #f0f; padding: 15px; border-radius: 8px; z-index: 999; box-shadow: 0 0 20px #f0f; pointer-events: auto; }
         #dev-panel h3 { margin: 0 0 10px 0; color: #f0f; font-size: 14px; text-shadow: 0 0 10px #f0f; }
 
@@ -211,9 +211,8 @@ function generateFavicon() {
 }
 generateFavicon();
 
-// --- 開発者モード関連の関数 ---
+// --- 開発者モード関連 ---
 let isDevModeUnlocked = false;
-
 function toggleDevFeatures(isOn) {
     if(isOn) {
         document.getElementById('btn-oni').style.display = 'block';
@@ -223,18 +222,14 @@ function toggleDevFeatures(isOn) {
         if (localStorage.getItem('neon_oni_cleared') !== 'true') document.getElementById('btn-endless').style.display = 'none';
     }
 }
-
 function addDevSP() {
     if(!isPlay) { alert("ゲームプレイ中（戦闘中）のみSPを追加できます。"); return; }
     let val = parseInt(document.getElementById('dev-sp-input').value);
     if(!isNaN(val) && val > 0) {
-        player.sp += val;
-        player.totalSpGained += val;
-        updateUI();
-        if(isShopOpen) renderShop();
+        player.sp += val; player.totalSpGained += val;
+        updateUI(); if(isShopOpen) renderShop();
     }
 }
-
 
 // --- メインシステム ---
 const canvas = document.getElementById('game');
@@ -244,6 +239,9 @@ let gameMode = 'normal';
 let isOniMode = false;
 let enemies = [], bullets = [], drops = [], effects = [], texts = [], lasers = [];
 const keys = {};
+
+// ウィンドウが裏に回った時にキー入力をリセット（おしっぱ防止）
+window.addEventListener('blur', () => { for (let k in keys) keys[k] = false; });
 
 let lastTime = 0;
 const fpsInterval = 1000 / 60;
@@ -289,6 +287,9 @@ function formatDamage(num) {
 }
 
 function returnToTitle() {
+    // 画面移行時にもキー入力をリセット
+    for (let k in keys) keys[k] = false; 
+
     isPlay = false; isGameOver = false; isGameClear = false; isPaused = false; isShopOpen = false; isScoreShopOpen = false;
     document.getElementById('game-over-screen').style.display = 'none';
     document.getElementById('game-clear-screen').style.display = 'none';
@@ -328,8 +329,9 @@ window.addEventListener('resize', resize); resize();
 window.addEventListener('keydown', e => {
     keys[e.code] = true;
 
-    // 開発者モードの隠しコマンド (S + Y)
+    // 開発者モードの隠しコマンド (SとYが両方押されているか)
     if (keys['KeyS'] && keys['KeyY'] && !isDevModeUnlocked) {
+        keys['KeyS'] = false; keys['KeyY'] = false; // プロンプト表示前に入力を折る（スタック防止）
         let code = prompt("開発者コードを入力してください:");
         if (code === "tssr") {
             isDevModeUnlocked = true;
@@ -472,11 +474,17 @@ class Player {
     update() {
         if (isPaused || isShopOpen || isScoreShopOpen || isGameOver || isGameClear) return; 
         if(frame % 60 === 0 && this.hp < this.maxHp) this.hp = Math.min(this.maxHp, this.hp + 1 + SKILLS.reg.lvl * 0.8);
+        
         let vx=0, vy=0;
-        if(keys['KeyW'] || keys['ArrowUp']) vy--; if(keys['KeyS'] || keys['ArrowDown']) vy++;
-        if(keys['KeyA'] || keys['ArrowLeft']) vx--; if(keys['KeyD'] || keys['ArrowRight']) vx++;
+        // 上下左右の移動処理（--や++ではなく、明確に増減させる）
+        if(keys['KeyW'] || keys['ArrowUp']) vy -= 1; 
+        if(keys['KeyS'] || keys['ArrowDown']) vy += 1;
+        if(keys['KeyA'] || keys['ArrowLeft']) vx -= 1; 
+        if(keys['KeyD'] || keys['ArrowRight']) vx += 1;
+        
         if (isTouching && touchX !== null) { let dx = touchX - joystickCenter.x, dy = touchY - joystickCenter.y; if(Math.hypot(dx, dy) > 5) { vx = dx; vy = dy; } }
         if(vx||vy) { const d = Math.hypot(vx,vy); this.x += (vx/d)*6; this.y += (vy/d)*6; }
+        
         let target = null, minDistSq = 4000000; 
         for(let e of enemies) { let dx = e.x - this.x, dy = e.y - this.y; let dSq = dx*dx + dy*dy; if(dSq < minDistSq) { minDistSq = dSq; target = e; } }
         if(this.cd > 0) this.cd--; else if(target) this.shoot(target);
@@ -676,7 +684,16 @@ function showGameOverScreen() { isGameOver=true; let fs=Math.floor(score); if(ga
 function showGameClearScreen(isT) { isGameClear=true; localStorage.setItem(isT?'neon_oni_cleared':'neon_cleared','true'); let t=document.getElementById('clear-title'), d=document.getElementById('clear-desc'); if(isT){t.innerText="TRUE MISSION ACCOMPLISHED";t.style.color="#f04";d.innerText="最凶の鬼ボスを撃破した！\nエンドレスモード解放！";}else{t.innerText="MISSION ACCOMPLISHED";d.innerText="最大レベル到達！\n鬼ボス降臨モード解放！";} document.getElementById('clear-score').innerText=formatDamage(score); document.getElementById('clear-sp').innerText=player.totalSpGained; document.getElementById('game-clear-screen').style.display='flex'; }
 function updateUI() { document.getElementById('hp-bar').style.width=Math.max(0,player.hp/player.maxHp*100)+'%'; document.getElementById('xp-bar').style.width=Math.min(100,player.xp/player.next*100)+'%'; document.getElementById('lvl').innerText=player.lvl; let m=player.getExpMult(); document.getElementById('xp-mult').innerText=m>1?'(x'+m.toFixed(1)+')':''; document.getElementById('score-count').innerText=formatDamage(score); document.getElementById('sp-count').innerText=player.sp; document.getElementById('sp-container').classList.toggle('has-sp',player.sp>0); document.getElementById('skill-up-notice').style.display=player.sp>0?'block':'none'; const ab=enemies.filter(e=>e.isBoss||e.isOniBoss), bhc=document.getElementById('boss-hud-container'); if(ab.length===0)bhc.innerHTML=''; else { let h=`<div class="label" style="color:#f00; font-size:10px;">ANOMALY DETECTED</div>`; ab.forEach((b,i)=>h+=`<div class="boss-hp-bg"><div id="boss-hp-${i}" class="boss-hp-inner ${b.isOniBoss?'oni-hp':''}"></div></div>`); bhc.innerHTML=h; ab.forEach((b,i)=>{let bar=document.getElementById(`boss-hp-${i}`); if(bar)bar.style.width=(b.hp/b.maxHp*100)+'%';}); } }
 function checkLevel() { while(player.xp>=player.next){player.lvl++; player.sp++; player.totalSpGained++; player.xp-=player.next; player.next=Math.floor(player.next*1.15)+15; if(gameMode==='normal'&&player.lvl>=99&&!isGameClear){updateUI();showGameClearScreen(false);return;}} updateUI(); }
-function startGame(m) { document.getElementById('start-menu').style.display='none'; gameMode=m; isOniMode=(m==='oni'); player=new Player(); isPlay=true; isGameOver=false; score=0; Object.keys(SKILLS).forEach(k=>SKILLS[k].lvl=0); bossesDefeated=0; eliteKills=0; xpMultiplier=1; globalEnemyBuffs={shoot:false,deathBomb:false,speedUp:0}; nextMilestone=10; enemies=[]; bullets=[]; drops=[]; effects=[]; texts=[]; lasers=[]; if(isOniMode){let w=document.getElementById('warning'); w.innerText="ONI ANOMALY INCOMING"; w.style.color="#f04"; w.style.display='block'; setTimeout(()=>w.style.display='none',4000); enemies.push(new Enemy(true,false,false,null,null,true));} lastTime=performance.now(); requestAnimationFrame(loop); }
+function startGame(m) { 
+    // ゲーム開始時にキー入力を完全にリセット（下に進むバグ対策）
+    for (let k in keys) keys[k] = false;
+
+    document.getElementById('start-menu').style.display='none'; 
+    gameMode=m; isOniMode=(m==='oni'); player=new Player(); isPlay=true; isGameOver=false; score=0; 
+    Object.keys(SKILLS).forEach(k=>SKILLS[k].lvl=0); bossesDefeated=0; eliteKills=0; xpMultiplier=1; globalEnemyBuffs={shoot:false,deathBomb:false,speedUp:0}; nextMilestone=10; enemies=[]; bullets=[]; drops=[]; effects=[]; texts=[]; lasers=[]; 
+    if(isOniMode){let w=document.getElementById('warning'); w.innerText="ONI ANOMALY INCOMING"; w.style.color="#f04"; w.style.display='block'; setTimeout(()=>w.style.display='none',4000); enemies.push(new Enemy(true,false,false,null,null,true));} 
+    lastTime=performance.now(); requestAnimationFrame(loop); 
+}
 
 function loop(ts) {
     if(!isPlay||isShopOpen||isScoreShopOpen||isPaused||isGameOver||isGameClear){requestAnimationFrame(loop); return;}
