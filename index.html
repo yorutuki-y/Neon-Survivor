@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ネオン サバイバー - 完全究極版（開発者モード搭載）</title>
+    <title>ネオン サバイバー - 真・鬼ボス絶望強化版</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000000; color: #fff; font-family: 'Segoe UI', sans-serif; user-select: none; touch-action: none; }
         canvas { display: block; touch-action: none; }
@@ -331,7 +331,7 @@ window.addEventListener('keydown', e => {
 
     // 開発者モードの隠しコマンド (SとYが両方押されているか)
     if (keys['KeyS'] && keys['KeyY'] && !isDevModeUnlocked) {
-        keys['KeyS'] = false; keys['KeyY'] = false; // プロンプト表示前に入力を折る（スタック防止）
+        keys['KeyS'] = false; keys['KeyY'] = false; // プロンプト表示前に入力を折る
         let code = prompt("開発者コードを入力してください:");
         if (code === "tssr") {
             isDevModeUnlocked = true;
@@ -476,7 +476,6 @@ class Player {
         if(frame % 60 === 0 && this.hp < this.maxHp) this.hp = Math.min(this.maxHp, this.hp + 1 + SKILLS.reg.lvl * 0.8);
         
         let vx=0, vy=0;
-        // 上下左右の移動処理（--や++ではなく、明確に増減させる）
         if(keys['KeyW'] || keys['ArrowUp']) vy -= 1; 
         if(keys['KeyS'] || keys['ArrowDown']) vy += 1;
         if(keys['KeyA'] || keys['ArrowLeft']) vx -= 1; 
@@ -563,7 +562,12 @@ class Bullet {
                 this.hitTargets.add(e);
                 if (this.isReflected) { 
                     player.sp += 5; player.totalSpGained += 5; texts.push(new FloatingText(e.x, e.y-20*sizeScale, "SP +5", '#0f0', 18));
-                    if (e.isOniBoss) { e.hp -= e.maxHp * 0.05; texts.push(new FloatingText(e.x, e.y, "COUNTER!", '#ff0', 24)); effects.push({ x: e.x, y: e.y, r: 0, maxR: 150 * sizeScale, color: '#ff0' }); }
+                    if (e.isOniBoss) { 
+                        // カウンターのダメージを0.5%に弱体化
+                        let counterDmg = e.maxHp * 0.005; e.hp -= counterDmg; 
+                        texts.push(new FloatingText(e.x, e.y, "COUNTER!", '#ff0', 24)); 
+                        effects.push({ x: e.x, y: e.y, r: 0, maxR: 150 * sizeScale, color: '#ff0' }); 
+                    }
                 }
                 if(e.hp <= 0 && !e.dead) e.die(nextB); 
                 if(this.pierce > 0) this.pierce--; else { this.dead = true; break; }
@@ -615,7 +619,13 @@ class Enemy {
         this.orbitAngle = 0; this.bossRef = null;
         if (spawnX !== null) { this.x = spawnX; this.y = spawnY; } 
         else { const a = Math.random()*Math.PI*2, d = isSwarm ? Math.max(w,h)*0.8+Math.random()*400 : Math.max(w,h)*0.6; this.x = player.x + Math.cos(a)*d; this.y = player.y + Math.sin(a)*d; }
-        if (this.isOniBoss) { this.hp = 500000000; this.maxHp = this.hp; this.r = 120 * sizeScale; this.phase = 1; this.attackTimer = 0; } 
+        
+        if (this.isOniBoss) { 
+            this.hp = 2000000000; // HPを20億に増加
+            this.maxHp = this.hp; 
+            this.r = 120 * sizeScale; 
+            this.cd = 0; this.phase = 1; this.attackTimer = 0; 
+        } 
         else if (this.isLaserCannon) { this.hp = 9e7; this.r = 30 * sizeScale; this.laserTimer = 160; } 
         else {
             const m = Math.pow(10, SKILLS.gre.lvl), sl = isBoss ? nextMilestone : player.lvl;
@@ -632,15 +642,65 @@ class Enemy {
             if (--this.laserTimer <= 0) { lasers.push(new Laser(this.x, this.y, Math.atan2(player.y-this.y, player.x-this.x))); this.laserTimer = 160+Math.random()*60; } return;
         }
         if (this.isOniBoss) {
-            this.hp = Math.min(this.maxHp, this.hp + (this.phase > 1 ? 500000 : 20000));
-            if (this.hp <= this.maxHp*0.6 && this.phase === 1) { this.phase = 2; addShake(20); let w = document.getElementById('warning'); w.innerText = "PHASE 2: ALL RANGE ATTACK!!"; w.style.color = "#f0f"; w.style.display = 'block'; setTimeout(() => w.style.display = 'none', 3000); for (let i=0; i<8; i++) { let c = new Enemy(false,false,false,this.x,this.y,false,true); c.bossRef = this; c.orbitAngle = (Math.PI*2/8)*i; enemies.push(c); } }
-            else if (this.hp <= this.maxHp*0.3 && this.phase === 2) { this.phase = 3; addShake(30); let w = document.getElementById('warning'); w.innerText = "FINAL PHASE: OVERDRIVE!!"; w.style.color = "#f00"; w.style.display = 'block'; setTimeout(() => w.style.display = 'none', 3000); }
+            this.hp = Math.min(this.maxHp, this.hp + (this.phase > 1 ? 2000000 : 50000)); // リジェネ強化
+
+            if (this.hp <= this.maxHp*0.6 && this.phase === 1) { 
+                this.phase = 2; addShake(20); 
+                let w = document.getElementById('warning'); w.innerText = "PHASE 2: ALL RANGE ATTACK!!"; w.style.color = "#f0f"; w.style.display = 'block'; setTimeout(() => w.style.display = 'none', 3000); 
+                for (let i=0; i<12; i++) { // レーザー砲を12基に増量
+                    let c = new Enemy(false,false,false,this.x,this.y,false,true); c.bossRef = this; c.orbitAngle = (Math.PI*2/12)*i; enemies.push(c); 
+                } 
+            }
+            else if (this.hp <= this.maxHp*0.3 && this.phase === 2) { 
+                this.phase = 3; addShake(30); 
+                let w = document.getElementById('warning'); w.innerText = "FINAL PHASE: OVERDRIVE!!"; w.style.color = "#f00"; w.style.display = 'block'; setTimeout(() => w.style.display = 'none', 3000); 
+            }
+            
             this.attackTimer++;
-            if (this.phase === 1) { this.x += (dx/dist)*3.5; this.y += (dy/dist)*3.5; if (this.attackTimer%3===0) { let a = (this.attackTimer*0.15)%(Math.PI*2); for(let i=0; i<4; i++) bullets.push(new Bullet(this.x,this.y,a+i*Math.PI/2,20,true,false,true)); } if (this.attackTimer%60===0) { let a = Math.atan2(dy,dx); for(let i=-3; i<=3; i++) bullets.push(new Bullet(this.x,this.y,a+i*0.12,35,true,false,true)); } }
-            else if (this.phase === 2) { let td = 350*sizeScale; if(dist>td+10){this.x+=(dx/dist)*4.5;this.y+=(dy/dist)*4.5;}else if(dist<td-10){this.x-=(dx/dist)*4.5;this.y-=(dy/dist)*4.5;} if (this.attackTimer%80===0) { for(let i=0; i<24; i++) { let sa = (Math.PI*2/24)*i + (this.attackTimer*0.01); let sx = player.x+Math.cos(sa)*600*sizeScale, sy = player.y+Math.sin(sa)*600*sizeScale; bullets.push(new Bullet(sx,sy,Math.atan2(player.y-sy,player.x-sx),30,true,false,true)); } } if (this.attackTimer%120===60) { let b = new Bullet(this.x,this.y,Math.atan2(dy,dx),60,true,false,true); b.vx*=0.5; b.vy*=0.5; b.r=30*sizeScale; bullets.push(b); } }
-            else if (this.phase === 3) { let cx=w/2, cy=h/2, cd=Math.hypot(cx-this.x, cy-this.y); if(cd>10){this.x+=(cx-this.x)/cd*6;this.y+=(cy-this.y)/cd*6;} if(this.attackTimer%8===0){let o=Math.sin(this.attackTimer*0.05)*0.5; for(let i=0;i<16;i++) bullets.push(new Bullet(this.x,this.y,(i/16)*Math.PI*2+o,30,true,false,true));} if(this.attackTimer%70===0) lasers.push(new Laser(this.x,this.y,Math.atan2(player.y-this.y,player.x-this.x))); }
-            if(dist < this.r + player.r) { player.hp -= 1000; if(player.hp <= 0) showGameOverScreen(); } return;
+            
+            if (this.phase === 1) { 
+                this.x += (dx/dist)*4.5; this.y += (dy/dist)*4.5; 
+                if (this.attackTimer%3===0) { 
+                    let a = (this.attackTimer*0.15)%(Math.PI*2); 
+                    for(let i=0; i<6; i++) bullets.push(new Bullet(this.x,this.y,a+i*Math.PI/3,20,true,false,true)); // 6方向に増量
+                } 
+                if (this.attackTimer%40===0) { 
+                    let a = Math.atan2(dy,dx); 
+                    for(let i=-5; i<=5; i++) bullets.push(new Bullet(this.x,this.y,a+i*0.08,35,true,false,true)); // 11発に増量
+                } 
+            } 
+            else if (this.phase === 2) { 
+                let td = 350*sizeScale; 
+                if(dist>td+10){this.x+=(dx/dist)*5.5;this.y+=(dy/dist)*5.5;}else if(dist<td-10){this.x-=(dx/dist)*5.5;this.y-=(dy/dist)*5.5;} 
+                if (this.attackTimer%50===0) { 
+                    for(let i=0; i<32; i++) { // 32発に増量
+                        let sa = (Math.PI*2/32)*i + (this.attackTimer*0.01); 
+                        let sx = player.x+Math.cos(sa)*600*sizeScale, sy = player.y+Math.sin(sa)*600*sizeScale; 
+                        bullets.push(new Bullet(sx,sy,Math.atan2(player.y-sy,player.x-sx),30,true,false,true)); 
+                    } 
+                } 
+                if (this.attackTimer%90===0) { 
+                    let a = Math.atan2(dy,dx);
+                    for(let i=-1; i<=1; i++) { // 巨大弾を3連射
+                        let b = new Bullet(this.x,this.y,a+i*0.2,60,true,false,true); 
+                        b.vx*=0.6; b.vy*=0.6; b.r=30*sizeScale; bullets.push(b); 
+                    }
+                } 
+            }
+            else if (this.phase === 3) { 
+                let cx=w/2, cy=h/2, cd=Math.hypot(cx-this.x, cy-this.y); 
+                if(cd>10){this.x+=(cx-this.x)/cd*8;this.y+=(cy-this.y)/cd*8;} 
+                if(this.attackTimer%5===0){ // 頻度アップ
+                    let o=Math.sin(this.attackTimer*0.05)*0.5; 
+                    for(let i=0;i<20;i++) bullets.push(new Bullet(this.x,this.y,(i/20)*Math.PI*2+o,30,true,false,true)); // 20発に増量
+                } 
+                if(this.attackTimer%40===0) // 極太レーザーの頻度アップ
+                    lasers.push(new Laser(this.x,this.y,Math.atan2(player.y-this.y,player.x-this.x))); 
+            }
+            
+            if(dist < this.r + player.r) { player.hp -= 2000; if(player.hp <= 0) showGameOverScreen(); } return;
         }
+
         const spd = (this.isBoss?2.2:(this.isElite?2.6:(this.isSwarm?3.5:2.8))) * (1+globalEnemyBuffs.speedUp*0.15);
         this.x += (dx/dist)*spd; this.y += (dy/dist)*spd;
         if(dist < this.r + player.r) { player.hp -= (this.isBoss?5:(this.isElite?4:2)); addShake(3); if(this.eSkills.bom>0){this.hp=0;this.die(bullets);} if(player.hp <= 0) showGameOverScreen(); }
@@ -685,9 +745,7 @@ function showGameClearScreen(isT) { isGameClear=true; localStorage.setItem(isT?'
 function updateUI() { document.getElementById('hp-bar').style.width=Math.max(0,player.hp/player.maxHp*100)+'%'; document.getElementById('xp-bar').style.width=Math.min(100,player.xp/player.next*100)+'%'; document.getElementById('lvl').innerText=player.lvl; let m=player.getExpMult(); document.getElementById('xp-mult').innerText=m>1?'(x'+m.toFixed(1)+')':''; document.getElementById('score-count').innerText=formatDamage(score); document.getElementById('sp-count').innerText=player.sp; document.getElementById('sp-container').classList.toggle('has-sp',player.sp>0); document.getElementById('skill-up-notice').style.display=player.sp>0?'block':'none'; const ab=enemies.filter(e=>e.isBoss||e.isOniBoss), bhc=document.getElementById('boss-hud-container'); if(ab.length===0)bhc.innerHTML=''; else { let h=`<div class="label" style="color:#f00; font-size:10px;">ANOMALY DETECTED</div>`; ab.forEach((b,i)=>h+=`<div class="boss-hp-bg"><div id="boss-hp-${i}" class="boss-hp-inner ${b.isOniBoss?'oni-hp':''}"></div></div>`); bhc.innerHTML=h; ab.forEach((b,i)=>{let bar=document.getElementById(`boss-hp-${i}`); if(bar)bar.style.width=(b.hp/b.maxHp*100)+'%';}); } }
 function checkLevel() { while(player.xp>=player.next){player.lvl++; player.sp++; player.totalSpGained++; player.xp-=player.next; player.next=Math.floor(player.next*1.15)+15; if(gameMode==='normal'&&player.lvl>=99&&!isGameClear){updateUI();showGameClearScreen(false);return;}} updateUI(); }
 function startGame(m) { 
-    // ゲーム開始時にキー入力を完全にリセット（下に進むバグ対策）
     for (let k in keys) keys[k] = false;
-
     document.getElementById('start-menu').style.display='none'; 
     gameMode=m; isOniMode=(m==='oni'); player=new Player(); isPlay=true; isGameOver=false; score=0; 
     Object.keys(SKILLS).forEach(k=>SKILLS[k].lvl=0); bossesDefeated=0; eliteKills=0; xpMultiplier=1; globalEnemyBuffs={shoot:false,deathBomb:false,speedUp:0}; nextMilestone=10; enemies=[]; bullets=[]; drops=[]; effects=[]; texts=[]; lasers=[]; 
