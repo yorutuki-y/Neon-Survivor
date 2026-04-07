@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ネオン サバイバー - 鬼ボス極限強化版（消音）</title>
+    <title>ネオン サバイバー - 開発者モード搭載版</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000000; color: #fff; font-family: 'Segoe UI', sans-serif; user-select: none; touch-action: none; }
         canvas { display: block; touch-action: none; }
@@ -84,6 +84,10 @@
         .m-btn:active { background: rgba(0,255,255,0.3); }
         .m-btn.score-btn:active { background: rgba(255,0,255,0.3); }
 
+        /* 開発者モードUIのスタイル */
+        #dev-panel { display: none; position: absolute; bottom: 100px; right: 20px; background: rgba(0, 0, 0, 0.9); border: 2px solid #f0f; padding: 15px; border-radius: 8px; z-index: 999; box-shadow: 0 0 20px #f0f; pointer-events: auto; }
+        #dev-panel h3 { margin: 0 0 10px 0; color: #f0f; font-size: 14px; text-shadow: 0 0 10px #f0f; }
+
         @media (max-width: 768px) {
             h1[style*="font-size: 70px"] { font-size: 45px !important; }
             #warning { font-size: 30px; }
@@ -143,6 +147,17 @@
         <div class="restart-hint" onclick="returnToTitle()">タイトルへ戻る</div>
     </div>
 
+    <div id="dev-panel">
+        <h3>🛠 DEV MODE</h3>
+        <label style="display: flex; align-items: center; gap: 5px; margin-bottom: 10px; cursor: pointer; color: #fff; font-size: 12px;">
+            <input type="checkbox" id="dev-toggle" onchange="toggleDevFeatures(this.checked)"> 全機能解放
+        </label>
+        <div style="display: flex; gap: 5px; align-items: center;">
+            <input type="number" id="dev-sp-input" value="10000" style="width: 60px; background: #111; color: #0ff; border: 1px solid #0ff; padding: 3px; outline: none;">
+            <button style="background: #202; color: #f0f; border: 1px solid #f0f; padding: 4px 8px; cursor: pointer; font-weight: bold; font-size:12px;" onclick="addDevSP()">SP取得</button>
+        </div>
+    </div>
+
     <div id="ui-layer">
         <div class="hud">
             <div class="bar-wrap">
@@ -195,6 +210,31 @@ function generateFavicon() {
     document.head.appendChild(link);
 }
 generateFavicon();
+
+// --- 開発者モード関連の関数 ---
+let isDevModeUnlocked = false;
+
+function toggleDevFeatures(isOn) {
+    if(isOn) {
+        document.getElementById('btn-oni').style.display = 'block';
+        document.getElementById('btn-endless').style.display = 'block';
+    } else {
+        if (localStorage.getItem('neon_cleared') !== 'true') document.getElementById('btn-oni').style.display = 'none';
+        if (localStorage.getItem('neon_oni_cleared') !== 'true') document.getElementById('btn-endless').style.display = 'none';
+    }
+}
+
+function addDevSP() {
+    if(!isPlay) { alert("ゲームプレイ中（戦闘中）のみSPを追加できます。"); return; }
+    let val = parseInt(document.getElementById('dev-sp-input').value);
+    if(!isNaN(val) && val > 0) {
+        player.sp += val;
+        player.totalSpGained += val;
+        updateUI();
+        if(isShopOpen) renderShop();
+    }
+}
+
 
 // --- メインシステム ---
 const canvas = document.getElementById('game');
@@ -258,12 +298,19 @@ function returnToTitle() {
     document.getElementById('boss-hud-container').innerHTML = '';
     document.getElementById('start-menu').style.display = 'flex';
 
-    if (localStorage.getItem('neon_cleared') === 'true') document.getElementById('btn-oni').style.display = 'block';
-    if (localStorage.getItem('neon_oni_cleared') === 'true') {
+    let devOn = document.getElementById('dev-toggle') && document.getElementById('dev-toggle').checked;
+
+    if (localStorage.getItem('neon_cleared') === 'true' || devOn) document.getElementById('btn-oni').style.display = 'block';
+    else document.getElementById('btn-oni').style.display = 'none';
+    
+    if (localStorage.getItem('neon_oni_cleared') === 'true' || devOn) {
         document.getElementById('btn-endless').style.display = 'block';
         document.getElementById('highscore-display').style.display = 'block';
         endlessHighScore = parseInt(localStorage.getItem('neon_highscore') || '0');
         document.getElementById('highscore-display').innerText = `ENDLESS RECORD: ${formatDamage(endlessHighScore)}`;
+    } else {
+        document.getElementById('btn-endless').style.display = 'none';
+        document.getElementById('highscore-display').style.display = 'none';
     }
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, h);
 }
@@ -279,18 +326,41 @@ const resize = () => { w = canvas.width = window.innerWidth; h = canvas.height =
 window.addEventListener('resize', resize); resize();
 
 window.addEventListener('keydown', e => {
+    keys[e.code] = true;
+
+    // 開発者モードの隠しコマンド (S + Y)
+    if (keys['KeyS'] && keys['KeyY'] && !isDevModeUnlocked) {
+        keys['KeyS'] = false; keys['KeyY'] = false; // 押しっぱなし防止
+        let code = prompt("開発者コードを入力してください:");
+        if (code === "tssr") {
+            isDevModeUnlocked = true;
+            document.getElementById('dev-panel').style.display = 'block';
+        } else if (code !== null) {
+            alert("コードが間違っています。");
+        }
+    }
+
+    if (!isPlay || isGameOver || isGameClear) {
+        if (document.getElementById('start-menu').style.display !== 'none') {
+            let devOn = document.getElementById('dev-toggle') && document.getElementById('dev-toggle').checked;
+            if (e.code === 'Space') { e.preventDefault(); startGame('normal'); return; }
+            if (e.code === 'Enter' && (localStorage.getItem('neon_cleared') === 'true' || devOn)) { e.preventDefault(); startGame('oni'); return; }
+            if ((e.code === 'ShiftLeft' || e.code === 'ShiftRight') && (localStorage.getItem('neon_oni_cleared') === 'true' || devOn)) { e.preventDefault(); startGame('endless'); return; }
+        } else if (e.code === 'Space') {
+            e.preventDefault(); returnToTitle(); return; 
+        }
+    }
     if (e.code === 'KeyE' && isPlay && !isGameOver && !isGameClear && !isScoreShopOpen) { toggleShop(); return; }
     if (e.code === 'KeyQ' && isPlay && !isGameOver && !isGameClear && !isShopOpen) { toggleScoreShop(); return; }
     if (e.code === 'Escape' && isPlay && !isGameOver && !isGameClear) {
         if (isShopOpen) toggleShop(); else if (isScoreShopOpen) toggleScoreShop(); else togglePause(); return;
     }
-    keys[e.code] = true;
 });
 window.addEventListener('keyup', e => keys[e.code] = false);
 
 // スマホ操作
 canvas.addEventListener('touchstart', e => {
-    if (e.target.closest('.m-btn')) return;
+    if (e.target.closest('.m-btn') || e.target.closest('#dev-panel')) return;
     if (!isPlay || isPaused || isShopOpen || isScoreShopOpen) return;
     e.preventDefault(); 
     for (let i = 0; i < e.changedTouches.length; i++) {
