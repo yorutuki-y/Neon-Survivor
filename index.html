@@ -330,7 +330,6 @@ window.addEventListener('keydown', e => {
 
     // 開発者モードの隠しコマンド (S + Y)
     if (keys['KeyS'] && keys['KeyY'] && !isDevModeUnlocked) {
-        keys['KeyS'] = false; keys['KeyY'] = false; // 押しっぱなし防止
         let code = prompt("開発者コードを入力してください:");
         if (code === "tssr") {
             isDevModeUnlocked = true;
