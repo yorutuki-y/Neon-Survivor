@@ -538,7 +538,7 @@ class Bullet {
             if (this.maxLife - this.life > 30) {
                 for (let e of enemies) {
                     if (e.isOniBoss && Math.hypot(e.x-this.x, e.y-this.y) < e.r+this.r) { 
-                        player.sp += 5; player.totalSpGained += 5; this.dead = true;
+                        player.sp += 1; player.totalSpGained += 5; this.dead = true;
                         texts.push(new FloatingText(this.x, this.y, "SP +5", '#0ff', 24));
                         effects.push({ x: this.x, y: this.y, r: 0, maxR: 80 * sizeScale, color: '#a0f' }); return; 
                     }
@@ -561,7 +561,7 @@ class Bullet {
                 if (!e.isLaserCannon) { e.hp -= this.dmg; if(texts.length < 20) texts.push(new FloatingText(e.x, e.y, formatDamage(this.dmg), e.isOniBoss ? '#faa' : '#fff')); }
                 this.hitTargets.add(e);
                 if (this.isReflected) { 
-                    player.sp += 5; player.totalSpGained += 5; texts.push(new FloatingText(e.x, e.y-20*sizeScale, "SP +5", '#0f0', 18));
+                    player.sp += 1; player.totalSpGained += 1; texts.push(new FloatingText(e.x, e.y-20*sizeScale, "SP +5", '#0f0', 18));
                     if (e.isOniBoss) { 
                         // カウンターのダメージを0.5%に弱体化
                         let counterDmg = e.maxHp * 0.005; e.hp -= counterDmg; 
