@@ -185,7 +185,7 @@
         <div id="joystick-zone"><div id="joystick-stick"></div></div>
         <div class="mobile-btn-container">
             <div class="m-btn pause-btn" style="pointer-events: auto;" onclick="if(isPlay && !isGameOver && !isGameClear) togglePause(); event.stopPropagation();">||</div>
-            <div class="m-btn score-btn" onclick="if(isPlay && !isGameOver && !isGameClear && !isShopOpen && !isPaused) toggleScoreShop()"><span>還元</span><span>(SCORE)</span></div>
+            <div id="mobile-score-btn" class="m-btn score-btn" onclick="if(isPlay && !isGameOver && !isGameClear && !isShopOpen && !isPaused && !isOniMode) toggleScoreShop()"><span>還元</span><span>(SCORE)</span></div>
             <div class="m-btn" onclick="if(isPlay && !isGameOver && !isGameClear && !isScoreShopOpen && !isPaused) toggleShop()"><span>強化</span><span>(SP)</span></div>
         </div>
     </div>
@@ -264,17 +264,18 @@ let isTouching = false;
 let joystickCenter = {x: 0, y: 0};
 const maxJoystickDist = 45; 
 
+// 鬼ボス時に非表示にするスキルには hideInOni: true を設定
 const SKILLS = {
-    atk: { name: "ダメージ", desc: "基礎ダメージ +50%", lvl: 0, max: 9999 },
+    atk: { name: "ダメージ", desc: "基礎ダメージ +50%", lvl: 0, max: 9999 }, // 鬼ボス時はコード内で上限55に制限
     rap: { name: "連射", desc: "連射速度アップ", lvl: 0, max: 10 },
     reg: { name: "回復", desc: "自動回復量増加", lvl: 0, max: 99 },
-    bom: { name: "爆破", desc: "敵撃破時に爆発", lvl: 0, max: 99 },
-    gre: { name: "ハイリスク", desc: "敵体力増 / XP激増", lvl: 0, max: 999 },
-    spw: { name: "敵出現増加", desc: "敵の出現数アップ", lvl: 0, max: 999 },
+    bom: { name: "爆破", desc: "敵撃破時に爆発", lvl: 0, max: 99, hideInOni: true },
+    gre: { name: "ハイリスク", desc: "敵体力増 / XP激増", lvl: 0, max: 999, hideInOni: true },
+    spw: { name: "敵出現増加", desc: "敵の出現数アップ", lvl: 0, max: 999, hideInOni: true },
     neo: { name: "マルチショット", desc: "同時発射数増加", lvl: 0, max: 10 },
     thr: { name: "貫通", desc: "弾が敵を貫通する", lvl: 0, max: 10 },
     shd: { name: "シールド", desc: "Lv10で破壊時に爆発", lvl: 0, max: 20 },
-    spb: { name: "SPブースト", desc: "未消費SPに応じXP増", lvl: 0, max: 10, cost: 5 } 
+    spb: { name: "SPブースト", desc: "未消費SPに応じXP増", lvl: 0, max: 10, cost: 5, hideInOni: true } 
 };
 
 function getScoreMult() { return 1 + Math.floor(score / 500) / 100; }
@@ -352,9 +353,12 @@ window.addEventListener('keydown', e => {
         }
     }
     if (e.code === 'KeyE' && isPlay && !isGameOver && !isGameClear && !isScoreShopOpen) { toggleShop(); return; }
-    if (e.code === 'KeyQ' && isPlay && !isGameOver && !isGameClear && !isShopOpen) { toggleScoreShop(); return; }
+    
+    // Qキー（スコア還元所）は鬼ボスモードでは無効化
+    if (e.code === 'KeyQ' && isPlay && !isGameOver && !isGameClear && !isShopOpen && !isOniMode) { toggleScoreShop(); return; }
+    
     if (e.code === 'Escape' && isPlay && !isGameOver && !isGameClear) {
-        if (isShopOpen) toggleShop(); else if (isScoreShopOpen) toggleScoreShop(); else togglePause(); return;
+        if (isShopOpen) toggleShop(); else if (isScoreShopOpen && !isOniMode) toggleScoreShop(); else togglePause(); return;
     }
 });
 window.addEventListener('keyup', e => keys[e.code] = false);
@@ -418,11 +422,15 @@ function toggleScoreShop() {
 
 window.buySkill = function(key, type) {
     const s = SKILLS[key]; const cost = s.cost || 1; let bought = false;
+    
+    // 鬼ボス戦の場合、攻撃力（atk）の最大値を55に制限
+    let currentMax = (isOniMode && key === 'atk') ? 55 : s.max;
+
     if (type === 'max') {
-        const buyAmount = Math.min(Math.floor(player.sp / cost), s.max - s.lvl);
+        const buyAmount = Math.min(Math.floor(player.sp / cost), currentMax - s.lvl);
         if (buyAmount > 0) { player.sp -= buyAmount * cost; player.spentSp += buyAmount * cost; s.lvl += buyAmount; bought = true; }
     } else {
-        if (s.lvl < s.max && player.sp >= cost) { player.sp -= cost; player.spentSp += cost; s.lvl++; bought = true; }
+        if (s.lvl < currentMax && player.sp >= cost) { player.sp -= cost; player.spentSp += cost; s.lvl++; bought = true; }
     }
     if (bought) { renderShop(); updateUI(); }
 };
@@ -430,13 +438,23 @@ window.buySkill = function(key, type) {
 function renderShop() {
     document.getElementById('shop-sp-display').innerText = player.sp;
     const container = document.getElementById('shop-options'); container.innerHTML = '';
+    
     Object.keys(SKILLS).forEach(key => {
-        const s = SKILLS[key]; const cost = s.cost || 1; 
+        const s = SKILLS[key]; 
+        // 鬼ボス時に非表示に設定されたスキルを除外
+        if (isOniMode && s.hideInOni) return;
+
+        const cost = s.cost || 1; 
+        
+        // 鬼ボス戦の場合、攻撃力（atk）の最大値を55に制限
+        let currentMax = (isOniMode && key === 'atk') ? 55 : s.max;
+
         const card = document.createElement('div');
-        const isMax = s.lvl >= s.max, canBuy = player.sp >= cost && !isMax; 
+        const isMax = s.lvl >= currentMax, canBuy = player.sp >= cost && !isMax; 
         card.className = 'shop-card';
         if (isMax) card.classList.add('maxed'); else if (canBuy) card.classList.add('buyable');
-        card.innerHTML = `<b>${s.name}</b><p>${s.desc}</p><div class="lvl-text">Lv: ${isMax?'MAX':s.lvl+'/'+s.max}${isMax?'':'<br><span style="color:'+(canBuy?'#ff0':'#888')+'; font-size:10px;">(必要SP: '+cost+')</span>'}</div>${canBuy?`<div style="display:flex; justify-content:center; gap:5px;"><button class="buy-btn" onclick="buySkill('${key}', '1')">+1</button><button class="buy-btn max-btn" onclick="buySkill('${key}', 'max')">MAX</button></div>`:''}`;
+        
+        card.innerHTML = `<b>${s.name}</b><p>${s.desc}</p><div class="lvl-text">Lv: ${isMax?'MAX':s.lvl+'/'+currentMax}${isMax?'':'<br><span style="color:'+(canBuy?'#ff0':'#888')+'; font-size:10px;">(必要SP: '+cost+')</span>'}</div>${canBuy?`<div style="display:flex; justify-content:center; gap:5px;"><button class="buy-btn" onclick="buySkill('${key}', '1')">+1</button><button class="buy-btn max-btn" onclick="buySkill('${key}', 'max')">MAX</button></div>`:''}`;
         container.appendChild(card);
     });
 }
@@ -490,7 +508,9 @@ class Player {
         updateUI();
     }
     shoot(t) {
-        const baseAng = Math.atan2(t.y-this.y, t.x-this.x), dmg = 160 * Math.pow(1.2, SKILLS.atk.lvl) * getScoreMult();
+        // 鬼ボス時はSCORE補正が実質無効になるように
+        const mult = isOniMode ? 1 : getScoreMult();
+        const baseAng = Math.atan2(t.y-this.y, t.x-this.x), dmg = 160 * Math.pow(1.2, SKILLS.atk.lvl) * mult;
         let count = SKILLS.neo.lvl > 0 ? 1 + (SKILLS.neo.lvl * 2) : 1;
         for (let i = 0; i < count; i++) bullets.push(new Bullet(this.x, this.y, baseAng + (count===1?0:(i-(count-1)/2)*(count>9?0.12:0.20)), dmg, false));
         this.cd = Math.max(2, 18 - (SKILLS.rap.lvl * 1.5));
@@ -503,11 +523,12 @@ class Player {
             else {
                 const shdR = 60 * sizeScale; ctx.fillStyle = 'rgba(0, 255, 255, 0.15)'; ctx.strokeStyle = '#0ff'; ctx.lineWidth = 2;
                 ctx.beginPath(); ctx.arc(this.x, this.y, shdR, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+                const mult = isOniMode ? 1 : getScoreMult();
                 for(let e of enemies) {
                     if (e.isLaserCannon) continue;
                     let dx = e.x - this.x, dy = e.y - this.y, rr = e.r + shdR;
                     if(dx*dx + dy*dy < rr*rr) {
-                        e.hp -= 15 * Math.pow(1.2, SKILLS.atk.lvl) * getScoreMult(); const pushA = Math.atan2(dy, dx); e.x += Math.cos(pushA)*8; e.y += Math.sin(pushA)*8;
+                        e.hp -= 15 * Math.pow(1.2, SKILLS.atk.lvl) * mult; const pushA = Math.atan2(dy, dx); e.x += Math.cos(pushA)*8; e.y += Math.sin(pushA)*8;
                         if(e.hp <= 0 && !e.dead) e.die(bullets);
                         if(frame % 15 === 0) { this.shieldHits++; if (this.shieldHits >= SKILLS.shd.lvl) { this.breakShield(bullets); break; } }
                     }
@@ -538,7 +559,7 @@ class Bullet {
             if (this.maxLife - this.life > 30) {
                 for (let e of enemies) {
                     if (e.isOniBoss && Math.hypot(e.x-this.x, e.y-this.y) < e.r+this.r) { 
-                        player.sp += 1; player.totalSpGained += 5; this.dead = true;
+                        player.sp += 5; player.totalSpGained += 5; this.dead = true;
                         texts.push(new FloatingText(this.x, this.y, "SP +5", '#0ff', 24));
                         effects.push({ x: this.x, y: this.y, r: 0, maxR: 80 * sizeScale, color: '#a0f' }); return; 
                     }
@@ -561,10 +582,9 @@ class Bullet {
                 if (!e.isLaserCannon) { e.hp -= this.dmg; if(texts.length < 20) texts.push(new FloatingText(e.x, e.y, formatDamage(this.dmg), e.isOniBoss ? '#faa' : '#fff')); }
                 this.hitTargets.add(e);
                 if (this.isReflected) { 
-                    player.sp += 1; player.totalSpGained += 1; texts.push(new FloatingText(e.x, e.y-20*sizeScale, "SP +5", '#0f0', 18));
+                    player.sp += 5; player.totalSpGained += 5; texts.push(new FloatingText(e.x, e.y-20*sizeScale, "SP +5", '#0f0', 18));
                     if (e.isOniBoss) { 
-                        // カウンターのダメージを0.5%に弱体化
-                        let counterDmg = e.maxHp * 0.0005; e.hp -= counterDmg; 
+                        let counterDmg = e.maxHp * 0.005; e.hp -= counterDmg; 
                         texts.push(new FloatingText(e.x, e.y, "COUNTER!", '#ff0', 24)); 
                         effects.push({ x: e.x, y: e.y, r: 0, maxR: 150 * sizeScale, color: '#ff0' }); 
                     }
@@ -621,7 +641,7 @@ class Enemy {
         else { const a = Math.random()*Math.PI*2, d = isSwarm ? Math.max(w,h)*0.8+Math.random()*400 : Math.max(w,h)*0.6; this.x = player.x + Math.cos(a)*d; this.y = player.y + Math.sin(a)*d; }
         
         if (this.isOniBoss) { 
-            this.hp = 2000000000; // HPを20億に増加
+            this.hp = 2000000000; 
             this.maxHp = this.hp; 
             this.r = 120 * sizeScale; 
             this.cd = 0; this.phase = 1; this.attackTimer = 0; 
@@ -642,12 +662,12 @@ class Enemy {
             if (--this.laserTimer <= 0) { lasers.push(new Laser(this.x, this.y, Math.atan2(player.y-this.y, player.x-this.x))); this.laserTimer = 160+Math.random()*60; } return;
         }
         if (this.isOniBoss) {
-            this.hp = Math.min(this.maxHp, this.hp + (this.phase > 1 ? 2000000 : 50000)); // リジェネ強化
+            this.hp = Math.min(this.maxHp, this.hp + (this.phase > 1 ? 2000000 : 50000)); 
 
             if (this.hp <= this.maxHp*0.6 && this.phase === 1) { 
                 this.phase = 2; addShake(20); 
                 let w = document.getElementById('warning'); w.innerText = "PHASE 2: ALL RANGE ATTACK!!"; w.style.color = "#f0f"; w.style.display = 'block'; setTimeout(() => w.style.display = 'none', 3000); 
-                for (let i=0; i<12; i++) { // レーザー砲を12基に増量
+                for (let i=0; i<12; i++) { 
                     let c = new Enemy(false,false,false,this.x,this.y,false,true); c.bossRef = this; c.orbitAngle = (Math.PI*2/12)*i; enemies.push(c); 
                 } 
             }
@@ -662,18 +682,18 @@ class Enemy {
                 this.x += (dx/dist)*4.5; this.y += (dy/dist)*4.5; 
                 if (this.attackTimer%3===0) { 
                     let a = (this.attackTimer*0.15)%(Math.PI*2); 
-                    for(let i=0; i<6; i++) bullets.push(new Bullet(this.x,this.y,a+i*Math.PI/3,20,true,false,true)); // 6方向に増量
+                    for(let i=0; i<6; i++) bullets.push(new Bullet(this.x,this.y,a+i*Math.PI/3,20,true,false,true)); 
                 } 
                 if (this.attackTimer%40===0) { 
                     let a = Math.atan2(dy,dx); 
-                    for(let i=-5; i<=5; i++) bullets.push(new Bullet(this.x,this.y,a+i*0.08,35,true,false,true)); // 11発に増量
+                    for(let i=-5; i<=5; i++) bullets.push(new Bullet(this.x,this.y,a+i*0.08,35,true,false,true)); 
                 } 
             } 
             else if (this.phase === 2) { 
                 let td = 350*sizeScale; 
                 if(dist>td+10){this.x+=(dx/dist)*5.5;this.y+=(dy/dist)*5.5;}else if(dist<td-10){this.x-=(dx/dist)*5.5;this.y-=(dy/dist)*5.5;} 
                 if (this.attackTimer%50===0) { 
-                    for(let i=0; i<32; i++) { // 32発に増量
+                    for(let i=0; i<32; i++) { 
                         let sa = (Math.PI*2/32)*i + (this.attackTimer*0.01); 
                         let sx = player.x+Math.cos(sa)*600*sizeScale, sy = player.y+Math.sin(sa)*600*sizeScale; 
                         bullets.push(new Bullet(sx,sy,Math.atan2(player.y-sy,player.x-sx),30,true,false,true)); 
@@ -681,7 +701,7 @@ class Enemy {
                 } 
                 if (this.attackTimer%90===0) { 
                     let a = Math.atan2(dy,dx);
-                    for(let i=-1; i<=1; i++) { // 巨大弾を3連射
+                    for(let i=-1; i<=1; i++) { 
                         let b = new Bullet(this.x,this.y,a+i*0.2,60,true,false,true); 
                         b.vx*=0.6; b.vy*=0.6; b.r=30*sizeScale; bullets.push(b); 
                     }
@@ -690,11 +710,11 @@ class Enemy {
             else if (this.phase === 3) { 
                 let cx=w/2, cy=h/2, cd=Math.hypot(cx-this.x, cy-this.y); 
                 if(cd>10){this.x+=(cx-this.x)/cd*8;this.y+=(cy-this.y)/cd*8;} 
-                if(this.attackTimer%5===0){ // 頻度アップ
+                if(this.attackTimer%5===0){ 
                     let o=Math.sin(this.attackTimer*0.05)*0.5; 
-                    for(let i=0;i<20;i++) bullets.push(new Bullet(this.x,this.y,(i/20)*Math.PI*2+o,30,true,false,true)); // 20発に増量
+                    for(let i=0;i<20;i++) bullets.push(new Bullet(this.x,this.y,(i/20)*Math.PI*2+o,30,true,false,true)); 
                 } 
-                if(this.attackTimer%40===0) // 極太レーザーの頻度アップ
+                if(this.attackTimer%40===0) 
                     lasers.push(new Laser(this.x,this.y,Math.atan2(player.y-this.y,player.x-this.x))); 
             }
             
@@ -742,14 +762,44 @@ class FloatingText {
 
 function showGameOverScreen() { isGameOver=true; let fs=Math.floor(score); if(gameMode==='endless'&&fs>endlessHighScore){endlessHighScore=fs; localStorage.setItem('neon_highscore',fs);} document.getElementById('final-score').innerText=formatDamage(fs)+(fs===endlessHighScore?' (NEW RECORD!)':''); document.getElementById('final-sp').innerText=player.totalSpGained; document.getElementById('final-level').innerText=player.lvl; document.getElementById('game-over-screen').style.display='flex'; }
 function showGameClearScreen(isT) { isGameClear=true; localStorage.setItem(isT?'neon_oni_cleared':'neon_cleared','true'); let t=document.getElementById('clear-title'), d=document.getElementById('clear-desc'); if(isT){t.innerText="TRUE MISSION ACCOMPLISHED";t.style.color="#f04";d.innerText="最凶の鬼ボスを撃破した！\nエンドレスモード解放！";}else{t.innerText="MISSION ACCOMPLISHED";d.innerText="最大レベル到達！\n鬼ボス降臨モード解放！";} document.getElementById('clear-score').innerText=formatDamage(score); document.getElementById('clear-sp').innerText=player.totalSpGained; document.getElementById('game-clear-screen').style.display='flex'; }
-function updateUI() { document.getElementById('hp-bar').style.width=Math.max(0,player.hp/player.maxHp*100)+'%'; document.getElementById('xp-bar').style.width=Math.min(100,player.xp/player.next*100)+'%'; document.getElementById('lvl').innerText=player.lvl; let m=player.getExpMult(); document.getElementById('xp-mult').innerText=m>1?'(x'+m.toFixed(1)+')':''; document.getElementById('score-count').innerText=formatDamage(score); document.getElementById('sp-count').innerText=player.sp; document.getElementById('sp-container').classList.toggle('has-sp',player.sp>0); document.getElementById('skill-up-notice').style.display=player.sp>0?'block':'none'; const ab=enemies.filter(e=>e.isBoss||e.isOniBoss), bhc=document.getElementById('boss-hud-container'); if(ab.length===0)bhc.innerHTML=''; else { let h=`<div class="label" style="color:#f00; font-size:10px;">ANOMALY DETECTED</div>`; ab.forEach((b,i)=>h+=`<div class="boss-hp-bg"><div id="boss-hp-${i}" class="boss-hp-inner ${b.isOniBoss?'oni-hp':''}"></div></div>`); bhc.innerHTML=h; ab.forEach((b,i)=>{let bar=document.getElementById(`boss-hp-${i}`); if(bar)bar.style.width=(b.hp/b.maxHp*100)+'%';}); } }
+function updateUI() { 
+    document.getElementById('hp-bar').style.width=Math.max(0,player.hp/player.maxHp*100)+'%'; 
+    document.getElementById('xp-bar').style.width=Math.min(100,player.xp/player.next*100)+'%'; 
+    document.getElementById('lvl').innerText=player.lvl; 
+    let m=player.getExpMult(); 
+    document.getElementById('xp-mult').innerText=m>1?'(x'+m.toFixed(1)+')':''; 
+    document.getElementById('score-count').innerText=formatDamage(score); 
+    document.getElementById('sp-count').innerText=player.sp; 
+    document.getElementById('sp-container').classList.toggle('has-sp',player.sp>0); 
+    document.getElementById('skill-up-notice').style.display=player.sp>0?'block':'none'; 
+    
+    const ab=enemies.filter(e=>e.isBoss||e.isOniBoss), bhc=document.getElementById('boss-hud-container'); 
+    if(ab.length===0)bhc.innerHTML=''; 
+    else { 
+        let h=`<div class="label" style="color:#f00; font-size:10px;">ANOMALY DETECTED</div>`; 
+        ab.forEach((b,i)=>h+=`<div class="boss-hp-bg"><div id="boss-hp-${i}" class="boss-hp-inner ${b.isOniBoss?'oni-hp':''}"></div></div>`); 
+        bhc.innerHTML=h; 
+        ab.forEach((b,i)=>{let bar=document.getElementById(`boss-hp-${i}`); if(bar)bar.style.width=(b.hp/b.maxHp*100)+'%';}); 
+    } 
+}
 function checkLevel() { while(player.xp>=player.next){player.lvl++; player.sp++; player.totalSpGained++; player.xp-=player.next; player.next=Math.floor(player.next*1.15)+15; if(gameMode==='normal'&&player.lvl>=99&&!isGameClear){updateUI();showGameClearScreen(false);return;}} updateUI(); }
+
 function startGame(m) { 
     for (let k in keys) keys[k] = false;
     document.getElementById('start-menu').style.display='none'; 
     gameMode=m; isOniMode=(m==='oni'); player=new Player(); isPlay=true; isGameOver=false; score=0; 
     Object.keys(SKILLS).forEach(k=>SKILLS[k].lvl=0); bossesDefeated=0; eliteKills=0; xpMultiplier=1; globalEnemyBuffs={shoot:false,deathBomb:false,speedUp:0}; nextMilestone=10; enemies=[]; bullets=[]; drops=[]; effects=[]; texts=[]; lasers=[]; 
-    if(isOniMode){let w=document.getElementById('warning'); w.innerText="ONI ANOMALY INCOMING"; w.style.color="#f04"; w.style.display='block'; setTimeout(()=>w.style.display='none',4000); enemies.push(new Enemy(true,false,false,null,null,true));} 
+    
+    // UI表示の切り替え（鬼ボス戦のみSCOREと還元ボタンを非表示）
+    document.getElementById('score-container').style.display = isOniMode ? 'none' : 'block';
+    const mScoreBtn = document.getElementById('mobile-score-btn');
+    if(mScoreBtn) mScoreBtn.style.display = isOniMode ? 'none' : 'flex';
+
+    if(isOniMode){
+        let w=document.getElementById('warning'); w.innerText="ONI ANOMALY INCOMING"; w.style.color="#f04"; w.style.display='block'; 
+        setTimeout(()=>w.style.display='none',4000); 
+        enemies.push(new Enemy(true,false,false,null,null,true));
+    } 
     lastTime=performance.now(); requestAnimationFrame(loop); 
 }
 
@@ -760,9 +810,26 @@ function loop(ts) {
     if(screenShake>0.5){ctx.translate((Math.random()-0.5)*screenShake,(Math.random()-0.5)*screenShake); screenShake*=0.85;}
     ctx.translate(w/2-player.x, h/2-player.y);
     const hb=enemies.some(e=>e.isBoss||e.isOniBoss); ctx.strokeStyle=hb?'#400':'#111'; ctx.lineWidth=2; const gs=100*sizeScale; ctx.beginPath(); for(let x=Math.floor((player.x-w)/gs)*gs;x<player.x+w;x+=gs){ctx.moveTo(x,player.y-h);ctx.lineTo(x,player.y+h);} for(let y=Math.floor((player.y-h)/gs)*gs;y<player.y+h;y+=gs){ctx.moveTo(player.x-w,y);ctx.lineTo(player.x+w,y);} ctx.stroke();
-    if(!isOniMode){if(frame%Math.floor(Math.max(2,35-SKILLS.gre.lvl*3-SKILLS.spw.lvl*2))===0 && enemies.length<45+SKILLS.gre.lvl*10+SKILLS.spw.lvl*5) enemies.push(new Enemy()); if(frame%1200===0) enemies.push(new Enemy(false,false,true));}
+    
+    if(!isOniMode){
+        if(frame%Math.floor(Math.max(2,35-SKILLS.gre.lvl*3-SKILLS.spw.lvl*2))===0 && enemies.length<45+SKILLS.gre.lvl*10+SKILLS.spw.lvl*5) enemies.push(new Enemy()); 
+        if(frame%1200===0) enemies.push(new Enemy(false,false,true));
+    }
+    
     ctx.globalCompositeOperation='lighter'; player.update(); player.draw();
-    if(!isOniMode&&player.lvl>=nextMilestone&&!hb){let w=document.getElementById('warning'); if(nextMilestone%20===0){for(let i=0;i<300;i++)enemies.push(new Enemy(false,true)); w.innerText="MASSIVE SWARM DETECTED"; w.style.color="#ff0"; w.style.display='block'; setTimeout(()=>w.style.display='none',4000);}else{let bc=Math.floor(nextMilestone/20)+1; for(let i=0;i<bc;i++)enemies.push(new Enemy(true)); w.style.display='block';} nextMilestone+=10;}
+    
+    if(!isOniMode&&player.lvl>=nextMilestone&&!hb){
+        let w=document.getElementById('warning'); 
+        if(nextMilestone%20===0){
+            for(let i=0;i<300;i++)enemies.push(new Enemy(false,true)); 
+            w.innerText="MASSIVE SWARM DETECTED"; w.style.color="#ff0"; w.style.display='block'; setTimeout(()=>w.style.display='none',4000);
+        } else {
+            let bc=Math.floor(nextMilestone/20)+1; 
+            for(let i=0;i<bc;i++)enemies.push(new Enemy(true)); w.style.display='block';
+        } 
+        nextMilestone+=10;
+    }
+    
     lasers.forEach(l=>{l.update();l.draw();}); lasers=lasers.filter(l=>!l.dead);
     let nb=[]; bullets.forEach(b=>{b.update(nb);b.draw();if(!b.dead)nb.push(b);}); bullets=nb; if(bullets.length>700)bullets.splice(0,bullets.length-700);
     let ne=[]; enemies.forEach(e=>{e.update();e.draw();if(!e.dead)ne.push(e);}); enemies=ne;
