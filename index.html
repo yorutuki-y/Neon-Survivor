@@ -541,8 +541,11 @@ class Player {
 class Bullet {
     constructor(x, y, ang, dmg, isEnemy = false, isHoming = false, isOni = false) {
         this.x = x; this.y = y; this.dmg = dmg; this.isEnemyBullet = isEnemy; this.isHoming = isHoming; this.dead = false; this.isOniBullet = isOni; this.isReflected = false; 
-        const spd = isHoming ? 6.5 : (isEnemy ? 8 + globalEnemyBuffs.speedUp : 32); 
+        
+        // 鬼ボス弾の速度を15に、ホーミング弾を10にアップ
+        const spd = isHoming ? 10 : (isOni ? 15 : (isEnemy ? 8 + globalEnemyBuffs.speedUp : 32)); 
         this.vx = Math.cos(ang) * spd; this.vy = Math.sin(ang) * spd;
+        
         this.life = isHoming ? 600 : (isOni ? 400 : (isEnemy ? 150 : 120)); this.maxLife = this.life;
         this.r = (isHoming ? 20 : (isEnemy ? 14 : 8)) * sizeScale; 
         this.pierce = (!isEnemy && SKILLS.thr.lvl > 0) ? SKILLS.thr.lvl : 0; this.hitTargets = new Set();
@@ -554,12 +557,14 @@ class Bullet {
             let diff = angleToPlayer - currentAngle;
             while (diff < -Math.PI) diff += Math.PI * 2; while (diff > Math.PI) diff -= Math.PI * 2;
             const newAngle = currentAngle + Math.sign(diff) * Math.min(Math.abs(diff), 0.045);
-            this.vx = Math.cos(newAngle) * 6.5; this.vy = Math.sin(newAngle) * 6.5;
+            
+            // 速度10にアップ
+            this.vx = Math.cos(newAngle) * 10; this.vy = Math.sin(newAngle) * 10;
             
             if (this.maxLife - this.life > 30) {
                 for (let e of enemies) {
                     if (e.isOniBoss && Math.hypot(e.x-this.x, e.y-this.y) < e.r+this.r) { 
-                        // 鬼ボスの強さ（フェーズ）に応じてSPドロップ率を低下させる
+                        // フェーズに応じた確率でSPドロップ
                         let prob = e.phase === 1 ? 0.20 : (e.phase === 2 ? 0.10 : 0.05);
                         if (Math.random() < prob) {
                             player.sp += 1; player.totalSpGained += 1; 
@@ -591,7 +596,7 @@ class Bullet {
                 this.hitTargets.add(e);
                 
                 if (this.isReflected) { 
-                    // 鬼ボスならフェーズに応じて確率低下、通常敵なら一律10%でSPドロップ
+                    // フェーズに応じた確率でSPドロップ
                     let prob = e.isOniBoss ? (e.phase === 1 ? 0.20 : (e.phase === 2 ? 0.10 : 0.05)) : 0.10;
                     if (Math.random() < prob) {
                         player.sp += 1; player.totalSpGained += 1; 
@@ -599,6 +604,7 @@ class Bullet {
                     }
                     
                     if (e.isOniBoss) { 
+                        // カウンターダメージ 0.05%
                         let counterDmg = e.maxHp * 0.0005; e.hp -= counterDmg; 
                         texts.push(new FloatingText(e.x, e.y, "COUNTER!", '#ff0', 24)); 
                         effects.push({ x: e.x, y: e.y, r: 0, maxR: 150 * sizeScale, color: '#ff0' }); 
