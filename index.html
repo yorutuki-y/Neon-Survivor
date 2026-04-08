@@ -564,7 +564,7 @@ class Bullet {
                     player.sp += 1; player.totalSpGained += 1; texts.push(new FloatingText(e.x, e.y-20*sizeScale, "SP +5", '#0f0', 18));
                     if (e.isOniBoss) { 
                         // カウンターのダメージを0.5%に弱体化
-                        let counterDmg = e.maxHp * 0.005; e.hp -= counterDmg; 
+                        let counterDmg = e.maxHp * 0.0005; e.hp -= counterDmg; 
                         texts.push(new FloatingText(e.x, e.y, "COUNTER!", '#ff0', 24)); 
                         effects.push({ x: e.x, y: e.y, r: 0, maxR: 150 * sizeScale, color: '#ff0' }); 
                     }
