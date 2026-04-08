@@ -25,7 +25,7 @@
 
         #skill-up-notice { position: absolute; top: 70px; left: 50%; transform: translateX(-50%); color: #0f0; font-size: 16px; font-weight: bold; text-shadow: 0 0 10px #0f0; display: none; animation: flash 1s infinite; letter-spacing: 2px; text-align: center; width: 100%; }
 
-        /* 鬼ボス用タイマーのスタイルを追加 */
+        /* 鬼ボス用タイマーのスタイル */
         #oni-timer { position: absolute; top: 55px; left: 50%; transform: translateX(-50%); font-size: 34px; color: #f04; font-weight: 900; text-shadow: 0 0 20px #f04; display: none; z-index: 10; letter-spacing: 2px; font-family: monospace; }
 
         #boss-hud-container { position: absolute; top: 100px; left: 50%; transform: translateX(-50%); width: 80%; display: flex; flex-direction: column; gap: 8px; text-align: center; }
@@ -87,6 +87,7 @@
         .m-btn:active { background: rgba(0,255,255,0.3); }
         .m-btn.score-btn:active { background: rgba(255,0,255,0.3); }
 
+        /* 開発者モードUI */
         #dev-panel { display: none; position: absolute; bottom: 100px; right: 20px; background: rgba(0, 0, 0, 0.9); border: 2px solid #f0f; padding: 15px; border-radius: 8px; z-index: 999; box-shadow: 0 0 20px #f0f; pointer-events: auto; }
         #dev-panel h3 { margin: 0 0 10px 0; color: #f0f; font-size: 14px; text-shadow: 0 0 10px #f0f; }
 
@@ -106,7 +107,7 @@
         <p style="color: #0aa; margin-bottom: 10px; font-size: 14px; text-align: center; padding: 0 10px;">PC: [W][A][S][D] 移動 | [E] 強化 | [Q] 還元<br>スマホ: 画面左側スワイプで移動</p>
         
         <div id="btn-normal" class="card selected" onclick="startGame('normal')">通常モード (タップで開始)<br><span style="font-size: 12px; font-weight: normal; color: #ccc;">目標: レベル99到達でクリア</span></div>
-        <div id="btn-oni" class="card oni-btn" style="display: none;" onclick="startGame('oni')">鬼ボス降臨モード<br><span style="font-size: 12px; font-weight: normal; color: #ccc;">全3形態の弾幕地獄！巨大弾を打ち返せ！<br><b>【制限時間: 30秒】</b></span></div>
+        <div id="btn-oni" class="card oni-btn" style="display: none;" onclick="startGame('oni')">鬼ボス降臨モード<br><span style="font-size: 12px; font-weight: normal; color: #ccc;">全3形態の弾幕地獄！巨大弾を打ち返せ！<br><b>【制限時間: 20秒】</b></span></div>
         <div id="btn-endless" class="card endless-btn" style="display: none;" onclick="startGame('endless')">エンドレスモード<br><span style="font-size: 12px; font-weight: normal; color: #ccc;">限界の先へ。Lv99を超えて生き残れ！</span></div>
         
         <div id="highscore-display" style="margin-top: 15px; font-size: 20px; color: #ff0; text-shadow: 0 0 10px #ff0; font-weight: bold; display: none;">ENDLESS HIGH SCORE: 0</div>
@@ -181,7 +182,7 @@
             </div>
         </div>
         <div id="skill-up-notice">SKILL UP AVAILABLE!</div>
-        <div id="oni-timer">30.00</div>
+        <div id="oni-timer">20.00</div>
         
         <div id="boss-hud-container"></div>
     </div>
@@ -269,6 +270,7 @@ let isTouching = false;
 let joystickCenter = {x: 0, y: 0};
 const maxJoystickDist = 45; 
 
+// 鬼ボス戦時の制限を追加 (hideInOni: 非表示設定, oniMax: 最大レベル設定60に引き上げ)
 const SKILLS = {
     atk: { name: "ダメージ", desc: "基礎ダメージ +50%", lvl: 0, max: 9999, oniMax: 60 },
     rap: { name: "連射", desc: "連射速度アップ", lvl: 0, max: 10 },
@@ -824,7 +826,7 @@ function startGame(m) {
     if (isOniMode) {
         document.getElementById('score-container').style.display = 'none';
         if (document.getElementById('mobile-score-btn')) document.getElementById('mobile-score-btn').style.display = 'none';
-        oniFrames = 30 * 60; // 30秒タイマー (60fps)
+        oniFrames = 20 * 60; // 20秒タイマー (60fps)
     } else {
         document.getElementById('score-container').style.display = 'block';
         if (document.getElementById('mobile-score-btn')) document.getElementById('mobile-score-btn').style.display = 'flex';
