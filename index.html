@@ -558,8 +558,8 @@ class Bullet {
             if (this.maxLife - this.life > 30) {
                 for (let e of enemies) {
                     if (e.isOniBoss && Math.hypot(e.x-this.x, e.y-this.y) < e.r+this.r) { 
-                        player.sp += 5; player.totalSpGained += 5; this.dead = true;
-                        texts.push(new FloatingText(this.x, this.y, "SP +5", '#0ff', 24));
+                        player.sp += 1; player.totalSpGained += 1; this.dead = true;
+                        texts.push(new FloatingText(this.x, this.y, "SP +1", '#0ff', 24));
                         effects.push({ x: this.x, y: this.y, r: 0, maxR: 80 * sizeScale, color: '#a0f' }); return; 
                     }
                 }
@@ -581,9 +581,9 @@ class Bullet {
                 if (!e.isLaserCannon) { e.hp -= this.dmg; if(texts.length < 20) texts.push(new FloatingText(e.x, e.y, formatDamage(this.dmg), e.isOniBoss ? '#faa' : '#fff')); }
                 this.hitTargets.add(e);
                 if (this.isReflected) { 
-                    player.sp += 5; player.totalSpGained += 5; texts.push(new FloatingText(e.x, e.y-20*sizeScale, "SP +5", '#0f0', 18));
+                    player.sp += 1; player.totalSpGained += 1; texts.push(new FloatingText(e.x, e.y-20*sizeScale, "SP +1", '#0f0', 18));
                     if (e.isOniBoss) { 
-                        let counterDmg = e.maxHp * 0.005; e.hp -= counterDmg; 
+                        let counterDmg = e.maxHp * 0.0005; e.hp -= counterDmg; 
                         texts.push(new FloatingText(e.x, e.y, "COUNTER!", '#ff0', 24)); 
                         effects.push({ x: e.x, y: e.y, r: 0, maxR: 150 * sizeScale, color: '#ff0' }); 
                     }
@@ -650,7 +650,6 @@ class Enemy {
             const m = Math.pow(10, SKILLS.gre.lvl), sl = isBoss ? nextMilestone : player.lvl;
             this.hp = (isBoss ? 1e5 + sl*12000 : (isElite ? 2500 + player.lvl*300 : (isSwarm ? 30 : 100 + player.lvl*50))) * m; this.maxHp = this.hp; 
             this.r = (isBoss ? 80 : (isElite ? 45 : (isSwarm ? 32 : 22))) * sizeScale; this.eSkills = { neo: 0, rap: 0, bom: 0 }; this.cd = Math.random() * 60;
-            // 鬼ボスモードなら通常敵はスキルを持たない、あるいは持たせても良いが制限に合わせて非表示にしているものは発動させないのもアリ
             if (!isSwarm && player.lvl >= 20) { let c = ['neo', 'rap', 'bom'].sort(()=>0.5-Math.random()); this.eSkills[c[0]] = player.lvl>=40?3:1; if(player.lvl>=40) this.eSkills[c[1]] = 3; }
         }
         this.dead = false;
@@ -732,7 +731,6 @@ class Enemy {
         if (this.isOniBoss) { score += 1e7; bossesDefeated++; effects.push({ x:this.x, y:this.y, r:0, maxR:1000*sizeScale, color:'#f04' }); addShake(30); setTimeout(()=>showGameClearScreen(true), 1500); return; }
         if (this.isLaserCannon) { score += 500; effects.push({x:this.x, y:this.y, r:0, maxR:50*sizeScale, color:'#f04'}); return; }
         
-        // 鬼ボス戦ではスコアを加算しない
         if (!isOniMode) {
             score += this.isBoss?1e4:(this.isElite?1e3:(this.isSwarm?10:100));
         }
@@ -794,7 +792,6 @@ function startGame(m) {
     document.getElementById('start-menu').style.display='none'; 
     gameMode=m; isOniMode=(m==='oni'); player=new Player(); isPlay=true; isGameOver=false; score=0; 
     
-    // 鬼ボス時のUI表示切り替え
     if (isOniMode) {
         document.getElementById('score-container').style.display = 'none';
         if (document.getElementById('mobile-score-btn')) document.getElementById('mobile-score-btn').style.display = 'none';
@@ -820,7 +817,6 @@ function loop(ts) {
     ctx.translate(w/2-player.x, h/2-player.y);
     const hb=enemies.some(e=>e.isBoss||e.isOniBoss); ctx.strokeStyle=hb?'#400':'#111'; ctx.lineWidth=2; const gs=100*sizeScale; ctx.beginPath(); for(let x=Math.floor((player.x-w)/gs)*gs;x<player.x+w;x+=gs){ctx.moveTo(x,player.y-h);ctx.lineTo(x,player.y+h);} for(let y=Math.floor((player.y-h)/gs)*gs;y<player.y+h;y+=gs){ctx.moveTo(player.x-w,y);ctx.lineTo(player.x+w,y);} ctx.stroke();
     
-    // 通常敵の出現処理（鬼ボス時は湧かない）
     if(!isOniMode){
         if(frame%Math.floor(Math.max(2,35-SKILLS.gre.lvl*3-SKILLS.spw.lvl*2))===0 && enemies.length<45+SKILLS.gre.lvl*10+SKILLS.spw.lvl*5) enemies.push(new Enemy()); 
         if(frame%1200===0) enemies.push(new Enemy(false,false,true));
