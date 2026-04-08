@@ -264,9 +264,9 @@ let isTouching = false;
 let joystickCenter = {x: 0, y: 0};
 const maxJoystickDist = 45; 
 
-// 鬼ボス戦時の制限を追加 (hideInOni: 非表示設定, oniMax: 最大レベル設定)
+// 鬼ボス戦時の制限を追加 (hideInOni: 非表示設定, oniMax: 最大レベル設定60に引き上げ)
 const SKILLS = {
-    atk: { name: "ダメージ", desc: "基礎ダメージ +50%", lvl: 0, max: 9999, oniMax: 55 },
+    atk: { name: "ダメージ", desc: "基礎ダメージ +50%", lvl: 0, max: 9999, oniMax: 60 },
     rap: { name: "連射", desc: "連射速度アップ", lvl: 0, max: 10 },
     reg: { name: "回復", desc: "自動回復量増加", lvl: 0, max: 99 },
     bom: { name: "爆破", desc: "敵撃破時に爆発", lvl: 0, max: 99, hideInOni: true },
