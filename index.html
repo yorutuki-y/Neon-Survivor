@@ -288,7 +288,6 @@ function formatDamage(num) {
 }
 
 function returnToTitle() {
-    // 画面移行時にもキー入力をリセット
     for (let k in keys) keys[k] = false; 
 
     isPlay = false; isGameOver = false; isGameClear = false; isPaused = false; isShopOpen = false; isScoreShopOpen = false;
@@ -300,7 +299,6 @@ function returnToTitle() {
     document.getElementById('boss-hud-container').innerHTML = '';
     document.getElementById('start-menu').style.display = 'flex';
 
-    // スコアUIをデフォルトの表示状態に戻す
     document.getElementById('score-container').style.display = 'block';
     if(isTouchDevice) document.getElementById('mobile-score-btn').style.display = 'flex';
 
@@ -335,9 +333,8 @@ window.addEventListener('resize', resize); resize();
 window.addEventListener('keydown', e => {
     keys[e.code] = true;
 
-    // 開発者モードの隠しコマンド (SとYが両方押されているか)
     if (keys['KeyS'] && keys['KeyY'] && !isDevModeUnlocked) {
-        keys['KeyS'] = false; keys['KeyY'] = false; // プロンプト表示前に入力を折る
+        keys['KeyS'] = false; keys['KeyY'] = false; 
         let code = prompt("開発者コードを入力してください:");
         if (code === "tssr") {
             isDevModeUnlocked = true;
@@ -358,7 +355,6 @@ window.addEventListener('keydown', e => {
         }
     }
     if (e.code === 'KeyE' && isPlay && !isGameOver && !isGameClear && !isScoreShopOpen) { toggleShop(); return; }
-    // 鬼ボスモード時は還元UIを開かせない
     if (e.code === 'KeyQ' && isPlay && !isGameOver && !isGameClear && !isShopOpen && !isOniMode) { toggleScoreShop(); return; }
     if (e.code === 'Escape' && isPlay && !isGameOver && !isGameClear) {
         if (isShopOpen) toggleShop(); else if (isScoreShopOpen) toggleScoreShop(); else togglePause(); return;
@@ -418,7 +414,7 @@ function toggleShop() {
 }
 
 function toggleScoreShop() {
-    if (isOniMode) return; // 鬼ボスモードではスコアショップ無効
+    if (isOniMode) return; 
     isScoreShopOpen = !isScoreShopOpen;
     if(isScoreShopOpen) { renderScoreShop(); document.getElementById('score-shop-panel').style.display = 'flex'; } 
     else { document.getElementById('score-shop-panel').style.display = 'none'; lastTime = performance.now(); }
@@ -426,7 +422,7 @@ function toggleScoreShop() {
 
 window.buySkill = function(key, type) {
     const s = SKILLS[key]; const cost = s.cost || 1; let bought = false;
-    let currentMax = (isOniMode && s.oniMax) ? s.oniMax : s.max; // 鬼ボス時の最大レベル判定
+    let currentMax = (isOniMode && s.oniMax) ? s.oniMax : s.max; 
     
     if (type === 'max') {
         const buyAmount = Math.min(Math.floor(player.sp / cost), currentMax - s.lvl);
@@ -443,8 +439,6 @@ function renderShop() {
     
     Object.keys(SKILLS).forEach(key => {
         const s = SKILLS[key]; 
-        
-        // 鬼ボスモードでの非表示対象スキルはスキップ
         if (isOniMode && s.hideInOni) return; 
         
         const cost = s.cost || 1; 
@@ -542,7 +536,6 @@ class Bullet {
     constructor(x, y, ang, dmg, isEnemy = false, isHoming = false, isOni = false) {
         this.x = x; this.y = y; this.dmg = dmg; this.isEnemyBullet = isEnemy; this.isHoming = isHoming; this.dead = false; this.isOniBullet = isOni; this.isReflected = false; 
         
-        // 鬼ボス弾の速度を15に、ホーミング弾を10にアップ
         const spd = isHoming ? 10 : (isOni ? 15 : (isEnemy ? 8 + globalEnemyBuffs.speedUp : 32)); 
         this.vx = Math.cos(ang) * spd; this.vy = Math.sin(ang) * spd;
         
@@ -558,13 +551,11 @@ class Bullet {
             while (diff < -Math.PI) diff += Math.PI * 2; while (diff > Math.PI) diff -= Math.PI * 2;
             const newAngle = currentAngle + Math.sign(diff) * Math.min(Math.abs(diff), 0.045);
             
-            // 速度10にアップ
             this.vx = Math.cos(newAngle) * 10; this.vy = Math.sin(newAngle) * 10;
             
             if (this.maxLife - this.life > 30) {
                 for (let e of enemies) {
                     if (e.isOniBoss && Math.hypot(e.x-this.x, e.y-this.y) < e.r+this.r) { 
-                        // フェーズに応じた確率でSPドロップ
                         let prob = e.phase === 1 ? 0.20 : (e.phase === 2 ? 0.10 : 0.05);
                         if (Math.random() < prob) {
                             player.sp += 1; player.totalSpGained += 1; 
@@ -596,7 +587,6 @@ class Bullet {
                 this.hitTargets.add(e);
                 
                 if (this.isReflected) { 
-                    // フェーズに応じた確率でSPドロップ
                     let prob = e.isOniBoss ? (e.phase === 1 ? 0.20 : (e.phase === 2 ? 0.10 : 0.05)) : 0.10;
                     if (Math.random() < prob) {
                         player.sp += 1; player.totalSpGained += 1; 
@@ -604,7 +594,6 @@ class Bullet {
                     }
                     
                     if (e.isOniBoss) { 
-                        // カウンターダメージ 0.05%
                         let counterDmg = e.maxHp * 0.0005; e.hp -= counterDmg; 
                         texts.push(new FloatingText(e.x, e.y, "COUNTER!", '#ff0', 24)); 
                         effects.push({ x: e.x, y: e.y, r: 0, maxR: 150 * sizeScale, color: '#ff0' }); 
@@ -850,7 +839,10 @@ function loop(ts) {
     if(!isOniMode&&player.lvl>=nextMilestone&&!hb){let w=document.getElementById('warning'); if(nextMilestone%20===0){for(let i=0;i<300;i++)enemies.push(new Enemy(false,true)); w.innerText="MASSIVE SWARM DETECTED"; w.style.color="#ff0"; w.style.display='block'; setTimeout(()=>w.style.display='none',4000);}else{let bc=Math.floor(nextMilestone/20)+1; for(let i=0;i<bc;i++)enemies.push(new Enemy(true)); w.style.display='block';} nextMilestone+=10;}
     
     lasers.forEach(l=>{l.update();l.draw();}); lasers=lasers.filter(l=>!l.dead);
-    let nb=[]; bullets.forEach(b=>{b.update(nb);b.draw();if(!b.dead)nb.push(b);}); bullets=nb; if(bullets.length>700)bullets.splice(0,bullets.length-700);
+    
+    // バグ修正箇所：弾の上限を4000に引き上げ（弾が途中で消えるのを防ぐ）
+    let nb=[]; bullets.forEach(b=>{b.update(nb);b.draw();if(!b.dead)nb.push(b);}); bullets=nb; if(bullets.length>4000)bullets.splice(0,bullets.length-4000);
+    
     let ne=[]; enemies.forEach(e=>{e.update();e.draw();if(!e.dead)ne.push(e);}); enemies=ne;
     drops=drops.filter(d=>{d.update();d.draw();return !d.dead;}); texts=texts.filter(t=>{t.update();t.draw();return t.life>0;});
     effects=effects.filter(e=>{e.r+=12; ctx.strokeStyle=e.color; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(e.x,e.y,e.r,0,Math.PI*2); ctx.stroke(); return e.r<e.maxR;});
