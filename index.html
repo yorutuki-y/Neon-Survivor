@@ -25,6 +25,9 @@
 
         #skill-up-notice { position: absolute; top: 70px; left: 50%; transform: translateX(-50%); color: #0f0; font-size: 16px; font-weight: bold; text-shadow: 0 0 10px #0f0; display: none; animation: flash 1s infinite; letter-spacing: 2px; text-align: center; width: 100%; }
 
+        /* 鬼ボス用タイマーのスタイルを追加 */
+        #oni-timer { position: absolute; top: 55px; left: 50%; transform: translateX(-50%); font-size: 34px; color: #f04; font-weight: 900; text-shadow: 0 0 20px #f04; display: none; z-index: 10; letter-spacing: 2px; font-family: monospace; }
+
         #boss-hud-container { position: absolute; top: 100px; left: 50%; transform: translateX(-50%); width: 80%; display: flex; flex-direction: column; gap: 8px; text-align: center; }
         .boss-hp-bg { height: 12px; background: rgba(255,0,0,0.15); border: 1px solid #400; width: 100%; box-shadow: 0 0 10px rgba(255,0,0,0.5); }
         .boss-hp-inner { height: 100%; background: #f00; width: 100%; box-shadow: 0 0 20px #f00; transition: width 0.1s; }
@@ -84,7 +87,6 @@
         .m-btn:active { background: rgba(0,255,255,0.3); }
         .m-btn.score-btn:active { background: rgba(255,0,255,0.3); }
 
-        /* 開発者モードUI */
         #dev-panel { display: none; position: absolute; bottom: 100px; right: 20px; background: rgba(0, 0, 0, 0.9); border: 2px solid #f0f; padding: 15px; border-radius: 8px; z-index: 999; box-shadow: 0 0 20px #f0f; pointer-events: auto; }
         #dev-panel h3 { margin: 0 0 10px 0; color: #f0f; font-size: 14px; text-shadow: 0 0 10px #f0f; }
 
@@ -92,6 +94,7 @@
             h1[style*="font-size: 70px"] { font-size: 45px !important; }
             #warning { font-size: 30px; }
             #clear-title { font-size: 30px; }
+            #oni-timer { font-size: 28px; top: 45px; }
         }
     </style>
 </head>
@@ -103,7 +106,7 @@
         <p style="color: #0aa; margin-bottom: 10px; font-size: 14px; text-align: center; padding: 0 10px;">PC: [W][A][S][D] 移動 | [E] 強化 | [Q] 還元<br>スマホ: 画面左側スワイプで移動</p>
         
         <div id="btn-normal" class="card selected" onclick="startGame('normal')">通常モード (タップで開始)<br><span style="font-size: 12px; font-weight: normal; color: #ccc;">目標: レベル99到達でクリア</span></div>
-        <div id="btn-oni" class="card oni-btn" style="display: none;" onclick="startGame('oni')">鬼ボス降臨モード<br><span style="font-size: 12px; font-weight: normal; color: #ccc;">全3形態の弾幕地獄！巨大弾を打ち返せ！</span></div>
+        <div id="btn-oni" class="card oni-btn" style="display: none;" onclick="startGame('oni')">鬼ボス降臨モード<br><span style="font-size: 12px; font-weight: normal; color: #ccc;">全3形態の弾幕地獄！巨大弾を打ち返せ！<br><b>【制限時間: 30秒】</b></span></div>
         <div id="btn-endless" class="card endless-btn" style="display: none;" onclick="startGame('endless')">エンドレスモード<br><span style="font-size: 12px; font-weight: normal; color: #ccc;">限界の先へ。Lv99を超えて生き残れ！</span></div>
         
         <div id="highscore-display" style="margin-top: 15px; font-size: 20px; color: #ff0; text-shadow: 0 0 10px #ff0; font-weight: bold; display: none;">ENDLESS HIGH SCORE: 0</div>
@@ -132,7 +135,7 @@
     </div>
 
     <div id="game-over-screen" class="modal">
-        <h1>ゲームオーバー</h1>
+        <h1 id="game-over-title">ゲームオーバー</h1>
         <p style="color: #fff; margin: 5px;">スコア: <span id="final-score">0</span></p>
         <p style="color: #fff; margin: 5px;">獲得合計SP: <span id="final-sp">0</span></p>
         <p style="color: #fff; margin: 5px;">到達レベル: <span id="final-level">0</span></p>
@@ -178,6 +181,8 @@
             </div>
         </div>
         <div id="skill-up-notice">SKILL UP AVAILABLE!</div>
+        <div id="oni-timer">30.00</div>
+        
         <div id="boss-hud-container"></div>
     </div>
 
@@ -237,10 +242,10 @@ const ctx = canvas.getContext('2d');
 let w, h, player, isPlay = false, isShopOpen = false, isScoreShopOpen = false, isPaused = false, isGameOver = false, isGameClear = false, frame = 0, score = 0;
 let gameMode = 'normal'; 
 let isOniMode = false;
+let oniFrames = 0; // 鬼ボス戦の制限時間フレーム
 let enemies = [], bullets = [], drops = [], effects = [], texts = [], lasers = [];
 const keys = {};
 
-// ウィンドウが裏に回った時にキー入力をリセット（おしっぱ防止）
 window.addEventListener('blur', () => { for (let k in keys) keys[k] = false; });
 
 let lastTime = 0;
@@ -264,7 +269,6 @@ let isTouching = false;
 let joystickCenter = {x: 0, y: 0};
 const maxJoystickDist = 45; 
 
-// 鬼ボス戦時の制限を追加 (hideInOni: 非表示設定, oniMax: 最大レベル設定60に引き上げ)
 const SKILLS = {
     atk: { name: "ダメージ", desc: "基礎ダメージ +50%", lvl: 0, max: 9999, oniMax: 60 },
     rap: { name: "連射", desc: "連射速度アップ", lvl: 0, max: 10 },
@@ -298,6 +302,7 @@ function returnToTitle() {
     document.getElementById('score-shop-panel').style.display = 'none';
     document.getElementById('boss-hud-container').innerHTML = '';
     document.getElementById('start-menu').style.display = 'flex';
+    document.getElementById('game-over-title').innerText = "ゲームオーバー";
 
     document.getElementById('score-container').style.display = 'block';
     if(isTouchDevice) document.getElementById('mobile-score-btn').style.display = 'flex';
@@ -777,6 +782,7 @@ class FloatingText {
 
 function showGameOverScreen() { isGameOver=true; let fs=Math.floor(score); if(gameMode==='endless'&&fs>endlessHighScore){endlessHighScore=fs; localStorage.setItem('neon_highscore',fs);} document.getElementById('final-score').innerText=formatDamage(fs)+(fs===endlessHighScore?' (NEW RECORD!)':''); document.getElementById('final-sp').innerText=player.totalSpGained; document.getElementById('final-level').innerText=player.lvl; document.getElementById('game-over-screen').style.display='flex'; }
 function showGameClearScreen(isT) { isGameClear=true; localStorage.setItem(isT?'neon_oni_cleared':'neon_cleared','true'); let t=document.getElementById('clear-title'), d=document.getElementById('clear-desc'); if(isT){t.innerText="TRUE MISSION ACCOMPLISHED";t.style.color="#f04";d.innerText="最凶の鬼ボスを撃破した！\nエンドレスモード解放！";}else{t.innerText="MISSION ACCOMPLISHED";d.innerText="最大レベル到達！\n鬼ボス降臨モード解放！";} document.getElementById('clear-score').innerText=formatDamage(score); document.getElementById('clear-sp').innerText=player.totalSpGained; document.getElementById('game-clear-screen').style.display='flex'; }
+
 function updateUI() { 
     document.getElementById('hp-bar').style.width=Math.max(0,player.hp/player.maxHp*100)+'%'; 
     document.getElementById('xp-bar').style.width=Math.min(100,player.xp/player.next*100)+'%'; 
@@ -788,6 +794,16 @@ function updateUI() {
     document.getElementById('sp-container').classList.toggle('has-sp',player.sp>0); 
     document.getElementById('skill-up-notice').style.display=player.sp>0?'block':'none'; 
     
+    // 鬼ボスタイマーUIの更新
+    let timerEl = document.getElementById('oni-timer');
+    if (isOniMode && !isGameOver && !isGameClear) {
+        timerEl.style.display = 'block';
+        timerEl.innerText = (Math.max(0, oniFrames) / 60).toFixed(2);
+        timerEl.style.color = oniFrames <= 600 ? '#f00' : '#f04'; // 10秒以下で赤色
+    } else {
+        if(timerEl) timerEl.style.display = 'none';
+    }
+
     const ab=enemies.filter(e=>e.isBoss||e.isOniBoss), bhc=document.getElementById('boss-hud-container'); 
     if(ab.length===0)bhc.innerHTML=''; 
     else { 
@@ -799,6 +815,7 @@ function updateUI() {
 }
 
 function checkLevel() { while(player.xp>=player.next){player.lvl++; player.sp++; player.totalSpGained++; player.xp-=player.next; player.next=Math.floor(player.next*1.15)+15; if(gameMode==='normal'&&player.lvl>=99&&!isGameClear){updateUI();showGameClearScreen(false);return;}} updateUI(); }
+
 function startGame(m) { 
     for (let k in keys) keys[k] = false;
     document.getElementById('start-menu').style.display='none'; 
@@ -807,6 +824,7 @@ function startGame(m) {
     if (isOniMode) {
         document.getElementById('score-container').style.display = 'none';
         if (document.getElementById('mobile-score-btn')) document.getElementById('mobile-score-btn').style.display = 'none';
+        oniFrames = 30 * 60; // 30秒タイマー (60fps)
     } else {
         document.getElementById('score-container').style.display = 'block';
         if (document.getElementById('mobile-score-btn')) document.getElementById('mobile-score-btn').style.display = 'flex';
@@ -824,7 +842,20 @@ function startGame(m) {
 function loop(ts) {
     if(!isPlay||isShopOpen||isScoreShopOpen||isPaused||isGameOver||isGameClear){requestAnimationFrame(loop); return;}
     if(ts-lastTime<fpsInterval){requestAnimationFrame(loop); return;} lastTime=ts-(ts-lastTime)%fpsInterval;
-    frame++; ctx.fillStyle='#000'; ctx.fillRect(0,0,w,h); ctx.save(); 
+    frame++; 
+    
+    // 鬼ボスのタイムリミット処理
+    if (isOniMode) {
+        oniFrames--;
+        if (oniFrames <= 0 && !isGameOver) {
+            oniFrames = 0;
+            player.hp = 0; // 強制ゲームオーバー
+            document.getElementById('game-over-title').innerText = "TIME OVER";
+            showGameOverScreen();
+        }
+    }
+
+    ctx.fillStyle='#000'; ctx.fillRect(0,0,w,h); ctx.save(); 
     if(screenShake>0.5){ctx.translate((Math.random()-0.5)*screenShake,(Math.random()-0.5)*screenShake); screenShake*=0.85;}
     ctx.translate(w/2-player.x, h/2-player.y);
     const hb=enemies.some(e=>e.isBoss||e.isOniBoss); ctx.strokeStyle=hb?'#400':'#111'; ctx.lineWidth=2; const gs=100*sizeScale; ctx.beginPath(); for(let x=Math.floor((player.x-w)/gs)*gs;x<player.x+w;x+=gs){ctx.moveTo(x,player.y-h);ctx.lineTo(x,player.y+h);} for(let y=Math.floor((player.y-h)/gs)*gs;y<player.y+h;y+=gs){ctx.moveTo(player.x-w,y);ctx.lineTo(player.x+w,y);} ctx.stroke();
@@ -840,7 +871,6 @@ function loop(ts) {
     
     lasers.forEach(l=>{l.update();l.draw();}); lasers=lasers.filter(l=>!l.dead);
     
-    // バグ修正箇所：弾の上限を4000に引き上げ（弾が途中で消えるのを防ぐ）
     let nb=[]; bullets.forEach(b=>{b.update(nb);b.draw();if(!b.dead)nb.push(b);}); bullets=nb; if(bullets.length>4000)bullets.splice(0,bullets.length-4000);
     
     let ne=[]; enemies.forEach(e=>{e.update();e.draw();if(!e.dead)ne.push(e);}); enemies=ne;
