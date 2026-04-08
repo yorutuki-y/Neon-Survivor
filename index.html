@@ -528,7 +528,14 @@ class Player {
                     if (e.isLaserCannon) continue;
                     let dx = e.x - this.x, dy = e.y - this.y, rr = e.r + shdR;
                     if(dx*dx + dy*dy < rr*rr) {
-                        e.hp -= 15 * Math.pow(1.2, SKILLS.atk.lvl) * getScoreMult(); const pushA = Math.atan2(dy, dx); e.x += Math.cos(pushA)*8; e.y += Math.sin(pushA)*8;
+                        // バグ修正・調整：敵のシールドも削る
+                        if (e.shieldHits > 0) {
+                            e.shieldHits--;
+                            effects.push({ x: e.x, y: e.y, r: 0, maxR: 20 * sizeScale, color: '#0ff' });
+                        } else {
+                            e.hp -= 15 * Math.pow(1.2, SKILLS.atk.lvl) * getScoreMult(); 
+                        }
+                        const pushA = Math.atan2(dy, dx); e.x += Math.cos(pushA)*8; e.y += Math.sin(pushA)*8;
                         if(e.hp <= 0 && !e.dead) e.die(bullets);
                         if(frame % 15 === 0) { this.shieldHits++; if (this.shieldHits >= SKILLS.shd.lvl) { this.breakShield(bullets); break; } }
                     }
@@ -590,8 +597,17 @@ class Bullet {
         for(let e of enemies) {
             if (this.hitTargets.has(e)) continue;
             if (Math.hypot(e.x - this.x, e.y - this.y) < e.r + this.r) {
-                if (!e.isLaserCannon) { e.hp -= this.dmg; if(texts.length < 20) texts.push(new FloatingText(e.x, e.y, formatDamage(this.dmg), e.isOniBoss ? '#faa' : '#fff')); }
                 this.hitTargets.add(e);
+                
+                // バグ修正・調整：敵のシールド処理
+                if (e.shieldHits > 0) {
+                    e.shieldHits--;
+                    effects.push({ x: e.x, y: e.y, r: 0, maxR: 20 * sizeScale, color: '#0ff' });
+                    if(this.pierce > 0) this.pierce--; else { this.dead = true; break; }
+                    continue; // 弾は消滅または貫通消費するが、本体にはダメージいかない
+                }
+                
+                if (!e.isLaserCannon) { e.hp -= this.dmg; if(texts.length < 20) texts.push(new FloatingText(e.x, e.y, formatDamage(this.dmg), e.isOniBoss ? '#faa' : '#fff')); }
                 
                 if (this.isReflected) { 
                     let prob = e.isOniBoss ? (e.phase === 1 ? 0.20 : (e.phase === 2 ? 0.10 : 0.05)) : 0.10;
@@ -670,6 +686,9 @@ class Enemy {
             this.hp = (isBoss ? 1e5 + sl*12000 : (isElite ? 2500 + player.lvl*300 : (isSwarm ? 30 : 100 + player.lvl*50))) * m; this.maxHp = this.hp; 
             this.r = (isBoss ? 80 : (isElite ? 45 : (isSwarm ? 32 : 22))) * sizeScale; this.eSkills = { neo: 0, rap: 0, bom: 0 }; this.cd = Math.random() * 60;
             if (!isSwarm && player.lvl >= 20) { let c = ['neo', 'rap', 'bom'].sort(()=>0.5-Math.random()); this.eSkills[c[0]] = player.lvl>=40?3:1; if(player.lvl>=40) this.eSkills[c[1]] = 3; }
+            
+            // バグ修正・調整：敵の大群（Swarm）発生時、プレイヤーのシールドレベルに応じたシールドを付与
+            this.shieldHits = isSwarm ? Math.max(1, SKILLS.shd.lvl) : 0;
         }
         this.dead = false;
     }
@@ -766,7 +785,16 @@ class Enemy {
     draw() {
         ctx.save(); if (this.isOniBoss) { let c = this.phase===1?'#800':(this.phase===2?'#a0a':'#300'); ctx.fillStyle=c; ctx.strokeStyle=this.phase===3?'#f00':'#f04'; ctx.lineWidth=5; ctx.shadowBlur=30; ctx.shadowColor=c; ctx.beginPath(); ctx.arc(this.x,this.y,this.r,0,Math.PI*2); ctx.fill(); ctx.stroke(); } 
         else if (this.isLaserCannon) { ctx.fillStyle='#500'; ctx.strokeStyle='#f04'; ctx.lineWidth=5; ctx.beginPath(); ctx.arc(this.x,this.y,this.r,0,Math.PI*2); ctx.fill(); ctx.stroke(); }
-        else { ctx.fillStyle=this.isBoss?'#f00':(this.isElite?'#fb0':(this.isSwarm?'#a0f':'#f35')); ctx.fillRect(this.x-this.r,this.y-this.r,this.r*2,this.r*2); if(this.eSkills.bom>0){ctx.fillStyle='#f80';ctx.beginPath();ctx.arc(this.x,this.y,this.r*0.5,0,Math.PI*2);ctx.fill();} } ctx.restore();
+        else { 
+            ctx.fillStyle=this.isBoss?'#f00':(this.isElite?'#fb0':(this.isSwarm?'#a0f':'#f35')); 
+            ctx.fillRect(this.x-this.r,this.y-this.r,this.r*2,this.r*2); 
+            if(this.eSkills.bom>0){ctx.fillStyle='#f80';ctx.beginPath();ctx.arc(this.x,this.y,this.r*0.5,0,Math.PI*2);ctx.fill();} 
+            // バグ修正・調整：敵のシールド描画
+            if(this.shieldHits > 0) {
+                ctx.strokeStyle = '#0ff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(this.x, this.y, this.r + 8 * sizeScale, 0, Math.PI*2); ctx.stroke();
+            }
+        } 
+        ctx.restore();
     }
 }
 
